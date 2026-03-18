@@ -1,0 +1,55 @@
+# V-ROSA .gitignore
+
+# ── Model weights (too large for git — use HuggingFace) ──────
+weights/
+*.bin
+*.safetensors
+*.pt
+*.pth
+adapter_model.*
+
+# ── Training data ─────────────────────────────────────────────
+data/
+*.jsonl
+*.json.gz
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.Python
+env/
+venv/
+.venv/
+*.so
+
+# ── Environment / secrets ─────────────────────────────────────
+.env
+.env.*
+config_local.yaml
+api_keys.yaml
+
+# ── Snapshots / logs ──────────────────────────────────────────
+*.png
+*.jpg
+logs/
+*.log
+checkpoints/
+
+# ── ROS 2 ─────────────────────────────────────────────────────
+install/
+build/
+log/
+*.bag
+
+# ── IDE ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store

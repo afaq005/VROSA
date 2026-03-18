@@ -1,0 +1,39 @@
+# V-ROSA Requirements
+# Install: pip install -r requirements.txt
+
+# ── Core ─────────────────────────────────────────────────────
+flask>=3.0.0
+numpy>=1.24.0
+Pillow>=10.0.0
+openai>=1.0.0
+
+# ── ROS 2 (install via apt, not pip) ─────────────────────────
+# sudo apt install ros-humble-desktop
+# rclpy is installed with ROS 2 — do not pip install
+
+# ── LangChain + ROSA ─────────────────────────────────────────
+langchain>=0.2.0
+langchain-openai>=0.1.0
+astro-rosa>=4.0.0          # JPL ROSA framework
+
+# ── Local VLM (only needed for --vlm local) ──────────────────
+torch>=2.0.0
+transformers==4.45.0
+peft==0.10.0
+accelerate>=0.28.0
+bitsandbytes>=0.43.0       # optional, for quantization
+
+# ── Training (only needed to train your own VLM) ─────────────
+trl>=0.8.0                 # SFTTrainer
+datasets>=2.18.0
+Pillow>=10.0.0
+
+# ── Depth Anything V2 teacher (data pipeline) ────────────────
+# transformers already covers this via:
+# depth-anything/Depth-Anything-V2-Small-hf
+
+# ── Utilities ────────────────────────────────────────────────
+scipy>=1.10.0
+opencv-python>=4.8.0
+pyyaml>=6.0
+requests>=2.31.0

@@ -1,0 +1,38 @@
+# Nova Carter (NVIDIA Isaac Sim)
+# Default robot configuration for V-ROSA
+
+robot:
+  name: "Nova Carter"
+  platform: "NVIDIA Nova Carter"
+  simulation: "NVIDIA Isaac Sim 4.2.0.2"
+
+topics:
+  camera:    /front_stereo_camera/left/image_raw
+  cam_info:  /front_stereo_camera/left/camera_info
+  lidar:     /front_3d_lidar/lidar_points
+  odometry:  /chassis/odom
+  cmd_vel:   /cmd_vel
+
+ros:
+  domain_id: 10
+  rmw:       rmw_cyclonedds_cpp
+
+safety:
+  safe_distance_m:   1.0    # hard stop
+  caution_distance_m: 1.5   # slow to 40%
+  caution_speed_ratio: 0.4
+  max_speed_ms:       0.4
+  max_angular_rad:    0.4
+  lidar_y_half_width: 0.6   # robot body half-width for filtering
+  lidar_z_max:        0.5   # ground level filter
+
+camera:
+  width:  1920
+  height: 1200
+  focal_length_default: 640.0
+
+stream:
+  fps:     15
+  width:   960
+  height:  600
+  quality: 80
