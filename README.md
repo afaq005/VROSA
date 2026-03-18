@@ -110,7 +110,7 @@ V-ROSA is the **first open VLN system on an extensible ROSA agent harness**, wit
 ### Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/vrosa.git
+git clone https://github.com/afaq005/vrosa.git
 cd vrosa
 
 # Create environment
@@ -143,9 +143,9 @@ python vrosa/vrosa_live.py --vlm local \
   --local-model ./weights/vrosa_vlm_v4
 ```
 
-**Option 3 — Remote A100 Inference Server:**
+**Option 3 — Remote  Inference Server:**
 ```bash
-# On the A100 server:
+# On the server:
 python inference/vrosa_inference_server.py
 
 # On your robot machine:
