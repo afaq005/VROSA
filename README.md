@@ -8,7 +8,6 @@
 [![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-4.5.0-green?logo=nvidia)](https://developer.nvidia.com/isaac-sim)
 [![Python](https://img.shields.io/badge/Python-3.10+-yellow?logo=python)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-red)](LICENSE)
-[![Paper](https://img.shields.io/badge/Paper-IEEE%20T--ASE-orange)](https://arxiv.org)
 
 [**Paper**](#) · [**Website**](#) · [**Demo Video**](#)
 
