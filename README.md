@@ -156,23 +156,38 @@ Before running, install dependencies from `requirements.txt` and configure your 
 
 ### Porting to a New ROS 2 Robot
 
-Transfer to a new platform (as demonstrated between the simulated Nova Carter and the physical Scout 2.0 in this work) requires only changing ROS 2 topic constants — no agent, tool, perception, or motion code changes:
+Transfer to a new platform (as demonstrated between the simulated Nova Carter and the physical Scout 2.0 in this work) requires only editing the topic name constants at the top of `ros_node.py` — no agent, tool, perception, or motion code changes:
 
-```yaml
-# robots/my_robot.yaml
-robot:
-  name: "My Robot"
-  topics:
-    camera:    /camera/color/image_raw
-    lidar:     /scan/points          # optional — omit if camera-only
-    odometry:  /odom
-    cmd_vel:   /cmd_vel
-    cam_info:  /camera/camera_info
-  safe_distance_m: 0.75
-  max_speed_ms:    0.4
+```python
+# ros_node.py
+TOPIC_IMAGE     = "/camera/camera/color/image_raw"
+TOPIC_CAMINFO   = "/camera/camera/color/camera_info"
+TOPIC_DEPTH     = "/camera/camera/depth/image_rect_raw"
+TOPIC_LIDAR     = "/front_3d_lidar/lidar_points"   # omit / leave unsubscribed if camera-only
+TOPIC_CMDVEL    = "/cmd_vel"
+TOPIC_ODOM      = "/odom"
 ```
 
-## Adding Domain-Specific Tools
+Set `ROS_DOMAIN_ID` for the target robot's network in `config.py`, and adjust `SAFE_DIST` in `motion.py` if the new platform needs a different safety margin.
+
+## Robot Tools
+
+The agent selects from a fixed tool registry defined in `tools.py` — it never issues raw velocity commands directly:
+
+| Tool | Purpose |
+|---|---|
+| `get_robot_position` | Return odometry state |
+| `move_forward` | Move forward/backward by distance |
+| `rotate_robot` | Rotate by angle |
+| `stop_robot` | Immediately stop |
+| `describe_current_view` | VLM scene description |
+| `find_object` | Search camera view for a named object |
+| `navigate_to_object` | Closed-loop plan–execute–recheck navigation |
+| `check_path_ahead` | Evaluate forward path for obstacles |
+| `save_snapshot` | Save current camera frame |
+| `look_around` | 360° scene scan |
+
+### Adding Domain-Specific Tools
 
 ```python
 from langchain.tools import tool
@@ -183,17 +198,38 @@ def check_corridor_clear() -> str:
     # Implementation using existing perception + safety infrastructure
     ...
 
-agent = VROSAAgent(
+# In agent.py, add to the tools list:
+agent = ROSA(
     ros_version=2,
     llm=llm,
+    prompts=prompts,
     tools=[
-        *base_tools,
+        get_robot_position, move_forward, rotate_robot, stop_robot,
+        describe_current_view, look_around, find_object, navigate_to_object,
+        check_path_ahead, save_snapshot,
         check_corridor_clear,   # ← just add it
-    ]
+    ],
 )
 ```
 
 The agent decides when to invoke each tool based on the natural language command — no retraining required.
+
+## REST API
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/` or `/view` | GET | Web dashboard |
+| `/stream` | GET | MJPEG camera stream |
+| `/command` | POST | Natural language input |
+| `/stop` | GET/POST | Emergency stop (bypasses the agent directly) |
+| `/status` | GET | Robot telemetry |
+| `/vlm/switch` | POST | Switch VLM backend (api / local / remote) |
+| `/vlm/model/switch` | POST | Switch API model |
+| `/vlm/status` | GET | Current VLM backend and model status |
+| `/yolo/switch` | POST | Switch YOLO model variant |
+| `/perc/config` | GET/POST | Toggle perception sources (LiDAR/depth/YOLO/GroundingDINO) |
+| `/detections` | GET | Current detection list |
+| `/snapshot` | GET | Save camera frame |
 
 ## Citation
 
