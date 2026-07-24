@@ -465,6 +465,90 @@ footer a{color:var(--text-dim);}
   section{padding:60px 0;}
   .hero{padding:90px 0 40px;}
 }
+   .zoomable-image {
+  cursor: zoom-in;
+  transition: opacity 0.2s ease;
+}
+
+.zoomable-image:hover {
+  opacity: 0.88;
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.image-lightbox.open {
+  display: flex;
+}
+
+.lightbox-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 95vw;
+  max-height: 90vh;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 6px;
+  cursor: zoom-out;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 28px;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  font-size: 44px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lightbox-close:hover {
+  opacity: 0.75;
+}
+
+.lightbox-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  color: #ffffff;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  text-align: center;
+}
+
+body.lightbox-open {
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .image-lightbox {
+    padding: 15px;
+  }
+
+  .lightbox-image {
+    max-width: 98vw;
+    max-height: 85vh;
+  }
+
+  .lightbox-close {
+    top: 8px;
+    right: 14px;
+  }
+}
+   
 </style>
 </head>
 <body>
@@ -573,17 +657,14 @@ footer a{color:var(--text-dim);}
   <img
     src="./static/images/architecture.jpg"
     alt="System architecture diagram"
-    class="architecture-image"
+    class="architecture-image zoomable-image"
+    id="architectureImage"
     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
   >
 
   <div class="media-fallback">
     <span>SYSTEM ARCHITECTURE DIAGRAM</span>
     <span class="fname">./static/images/architecture.jpg</span>
-    <span>
-      (4-layer overview — NL interface, agent + tool registry,
-      perception + VLM, ROS&nbsp;2 execution)
-    </span>
   </div>
 </div>
 
@@ -786,6 +867,61 @@ python3 vrosa_live.py
     <p>Jeonbuk National University &middot; Center for Autonomous Intelligence and e-Mobility &middot; <a href="https://github.com/afaq005/VROSA">github.com/afaq005/VROSA</a></p>
   </div>
 </footer>
+<div class="image-lightbox" id="imageLightbox" aria-hidden="true">
+  <button
+    class="lightbox-close"
+    id="lightboxClose"
+    type="button"
+    aria-label="Close enlarged image"
+  >
+    &times;
+  </button>
 
+  <img
+    class="lightbox-image"
+    id="lightboxImage"
+    src=""
+    alt="Enlarged system architecture diagram"
+  >
+
+  <p class="lightbox-hint">Click outside the image or press Esc to close</p>
+</div>
+   <script>
+  const architectureImage = document.getElementById("architectureImage");
+  const imageLightbox = document.getElementById("imageLightbox");
+  const lightboxImage = document.getElementById("lightboxImage");
+  const lightboxClose = document.getElementById("lightboxClose");
+
+  function openLightbox() {
+    lightboxImage.src = architectureImage.src;
+    imageLightbox.classList.add("open");
+    imageLightbox.setAttribute("aria-hidden", "false");
+    document.body.classList.add("lightbox-open");
+  }
+
+  function closeLightbox() {
+    imageLightbox.classList.remove("open");
+    imageLightbox.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("lightbox-open");
+  }
+
+  architectureImage.addEventListener("click", openLightbox);
+  lightboxClose.addEventListener("click", closeLightbox);
+
+  imageLightbox.addEventListener("click", function (event) {
+    if (
+      event.target === imageLightbox ||
+      event.target === lightboxImage
+    ) {
+      closeLightbox();
+    }
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      closeLightbox();
+    }
+  });
+</script>
 </body>
 </html>
