@@ -507,7 +507,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VROSA</span></div>
     <h2>Abstract</h2>
-    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks; adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend — cloud, local, or remote — with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
+    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks; adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend  such as cloud, local, or remote,  with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
   </div>
 </section>
 
@@ -518,7 +518,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VROSA</span><span class="ts">00:00:01</span></div>
     <h2>Say what you want. Leave <em>how</em> to the robot.</h2>
-    <p>Every detection's distance is resolved without requiring a fixed sensor suite, and the same agent, tool, and perception code runs unmodified on both the simulated Nova Carter and the physical Scout&nbsp;2.0 — only the ROS&nbsp;2 topic constants change between platforms.</p>
+    <p>Every detection's distance is resolved without requiring a fixed sensor suite, and the same agent, tool, and perception code runs unmodified on both the simulated Nova Carter and the physical Scout&nbsp;2.0 only the ROS&nbsp;2 topic constants change between platforms.</p>
 
     <div class="stats">
       <div class="stat"><div class="num">93.75<small>%</small></div><div class="label">partial-credit navigation success rate, 24 outdoor hardware trials</div></div>
@@ -575,7 +575,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">HW</span><span class="ts">scout_2.0 &middot; jbnu_campus</span></div>
     <h2>Off the sim floor, onto a Korean university campus.</h2>
-    <p>Physical trials ran on an AgileX Scout&nbsp;2.0 four-wheel skid-steer UGV with a Jetson AGX Orin 64GB running all perception and agent computation onboard &mdash; camera-only, no LiDAR. Twenty-four navigation trials spanned three outdoor sessions (midday sun and glare, evening, early morning), targets from 0.5&ndash;23.2&nbsp;m, cluttered e-bike/scooter zones, a Korean-text no-parking sign commanded in English, and a person who moved mid-navigation.</p>
+    <p>Physical trials ran on an AgileX Scout&nbsp;2.0 four-wheel skid-steer UGV with a Jetson AGX Orin 64GB running all perception and agent computation onboard, camera-only, no LiDAR. Twenty-four navigation trials spanned three outdoor sessions (midday sun and glare, evening, early morning), targets from 0.5&ndash;23.2&nbsp;m, cluttered e-bike/scooter zones, a Korean-text no-parking sign commanded in English, and a person who moved mid-navigation.</p>
 
     <div class="media-grid">
       <figure><div class="media"><span>FIELD ENVIRONMENTS</span><span class="fname">./static/images/field_envs.jpg</span></div><figcaption>Representative outdoor test scenes across all three sessions.</figcaption></figure>
@@ -620,7 +620,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VLM</span><span class="ts">backend_manager</span></div>
     <h2>Format compliance matters more than description quality.</h2>
-    <p>Three VLM backends were compared under identical fused-mode conditions (50 sim trials each). Claude Sonnet, LLaVA&nbsp;V5, and Phi-4 Base landed within a few points of each other on navigation success &mdash; the differences aren't statistically significant at this sample size. What <em>did</em> separate them was direction-query <strong>format compliance</strong>, which tracked completion time and attempt count far more tightly than raw success rate.</p>
+    <p>Three VLM backends were compared under identical fused-mode conditions (50 sim trials each). Claude Sonnet, LLaVA&nbsp;V5, and Phi-4 Base landed within a few points of each other on navigation success; the differences aren't statistically significant at this sample size. What <em>did</em> separate them was direction-query <strong>format compliance</strong>, which tracked completion time and attempt count far more tightly than raw success rate.</p>
 
     <div class="tblwrap">
     <table>
