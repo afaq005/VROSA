@@ -95,6 +95,16 @@ body::before{
 }
 
 section{padding:88px 0; border-bottom:1px solid var(--line-soft);}
+.abstract-section{text-align:center;}
+.abstract-section h2{margin-bottom:22px;}
+.abstract-section p{
+  text-align:justify;
+  max-width:760px;
+  margin:0 auto;
+  color:var(--text-dim);
+}
+.abstract-section .eyebrow{justify-content:center;}
+.abstract-section .eyebrow::after{display:none;}
 h2{
   font-family:var(--f-display); font-weight:600;
   font-size:clamp(1.5rem, 2.4vw, 2rem);
@@ -113,35 +123,34 @@ code, .mono{font-family:var(--f-mono);}
    HERO — a live recreation of VROSA's own HUD overlay
    ============================================================ */
 .hero{
-  min-height:100vh;
-  display:flex; flex-direction:column; justify-content:center;
+  min-height:auto;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
   position:relative;
-  padding:120px 0 60px;
+  padding:100px 0 60px;
   border-bottom:1px solid var(--line-soft);
   overflow:hidden;
-}
-.hero-kicker{
-  font-family:var(--f-mono); font-size:13px; color:var(--text-faint);
-  letter-spacing:0.08em; text-transform:uppercase; margin-bottom:18px;
+  text-align:center;
 }
 .hero h1{
   font-family:var(--f-display); font-weight:700;
-  font-size:clamp(2.6rem, 7vw, 5rem);
-  letter-spacing:-0.02em; line-height:0.98;
+  font-size:clamp(2.2rem, 5.5vw, 3.6rem);
+  letter-spacing:-0.02em; line-height:1.05;
   color:var(--text);
 }
 .hero h1 span{color:var(--cyan);}
 .hero .subtitle{
-  font-size:clamp(1.05rem, 1.6vw, 1.3rem);
+  font-size:clamp(1.05rem, 1.6vw, 1.25rem);
   color:var(--text-dim);
-  max-width:640px;
-  margin-top:22px;
+  max-width:680px;
+  margin:22px auto 0;
   font-weight:400;
 }
 .authors{
-  margin-top:32px;
+  margin-top:28px;
   font-size:0.95rem;
   color:var(--text-dim);
+  max-width:640px;
+  margin-left:auto; margin-right:auto;
 }
 .authors b{color:var(--text); font-weight:500;}
 .affil{
@@ -151,7 +160,8 @@ code, .mono{font-family:var(--f-mono);}
 }
 .links{
   display:flex; flex-wrap:wrap; gap:12px;
-  margin-top:32px;
+  margin-top:28px;
+  justify-content:center;
 }
 .btn{
   font-family:var(--f-mono);
@@ -186,6 +196,9 @@ code, .mono{font-family:var(--f-mono);}
     linear-gradient(rgba(0,212,255,0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0,212,255,0.05) 1px, transparent 1px);
   background-size:40px 40px;
+}
+#hero-video{
+  position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
 }
 .hud .placeholder-note{
   position:absolute; inset:0;
@@ -428,7 +441,6 @@ footer a{color:var(--text-dim);}
      ============================================================ -->
 <section class="hero">
   <div class="wrap">
-    <div class="hero-kicker">IEEE Transactions on Automation Science and Engineering &middot; 2026</div>
     <h1>VROSA<span>.</span></h1>
     <p class="subtitle">Vision-Language Agentic Control for Autonomous Mobile Robots — a tool-constrained agent that turns plain-English commands into safe, closed-loop navigation, from simulation to outdoor hardware.</p>
 
@@ -447,13 +459,17 @@ footer a{color:var(--text-dim);}
       <a class="btn" href="#cite">Cite</a>
     </div>
 
-    <!-- Signature element: a live recreation of VROSA's real HUD overlay -->
-    <div class="hud" role="img" aria-label="Simulated VROSA live camera HUD overlay">
+    <!-- Signature element: a live recreation of VROSA's real HUD overlay, wrapping a real <video> tag -->
+    <div class="hud" role="img" aria-label="VROSA live camera HUD overlay">
+      <video id="hero-video" autoplay loop muted playsinline
+        onloadeddata="document.querySelector('.hud .placeholder-note').style.display='none'">
+        <source src="./static/videos/hero_loop.mp4" type="video/mp4">
+      </video>
       <div class="grid-overlay"></div>
       <div class="placeholder-note">
         <span>DROP REPLACEMENT FOOTAGE HERE</span>
         <span class="fname">./static/videos/hero_loop.mp4</span>
-        <span>(this HUD is a live CSS/JS recreation — swap for real onboard footage anytime)</span>
+        <span>(plays automatically once the file exists — this HUD is the CSS/JS fallback shown until then)</span>
       </div>
       <div class="crosshair-ring"></div>
       <div class="crosshair"></div>
@@ -477,14 +493,24 @@ footer a{color:var(--text-dim);}
 </section>
 
 <!-- ============================================================
-     OVERVIEW
+     ABSTRACT
+     ============================================================ -->
+<section id="abstract" class="abstract-section">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">VROSA</span></div>
+    <h2>Abstract</h2>
+    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks — adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend — cloud, local, or remote — with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     APPROACH OVERVIEW
      ============================================================ -->
 <section id="overview">
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VROSA</span><span class="ts">00:00:01</span></div>
     <h2>Say what you want. Leave <em>how</em> to the robot.</h2>
-    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks — adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability.</p>
-    <p>The system pairs a hot-swappable vision-language model (VLM) backend — cloud, local, or remote — with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps.</p>
+    <p>Every detection's distance is resolved without requiring a fixed sensor suite, and the same agent, tool, and perception code runs unmodified on both the simulated Nova Carter and the physical Scout&nbsp;2.0 — only the ROS&nbsp;2 topic constants change between platforms.</p>
 
     <div class="stats">
       <div class="stat"><div class="num">93.75<small>%</small></div><div class="label">partial-credit navigation success rate, 24 outdoor hardware trials</div></div>
@@ -693,10 +719,20 @@ python3 vrosa_live.py
   </div>
 </section>
 
+<!-- ============================================================
+     ACKNOWLEDGEMENTS
+     ============================================================ -->
+<section id="acknowledgements" class="abstract-section">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">THANKS</span></div>
+    <h2>Acknowledgements</h2>
+    <p>This research was supported by the National Research Foundation of Korea (NRF, RS-2025-02308357; 2020M3C1C1A01082375) and by MOTIE/KIAT (RS-2025-02633206). We thank the CAiM Lab at Jeonbuk National University for hardware access and feedback throughout development.</p>
+  </div>
+</section>
+
 <footer>
   <div class="wrap">
-    <p>This research was supported by the National Research Foundation of Korea (NRF, RS-2025-02308357; 2020M3C1C1A01082375) and by MOTIE/KIAT (RS-2025-02633206).</p>
-    <p style="margin-top:14px;">Jeonbuk National University &middot; Center for Autonomous Intelligence and e-Mobility &middot; <a href="https://github.com/afaq005/VROSA">github.com/afaq005/VROSA</a></p>
+    <p>Jeonbuk National University &middot; Center for Autonomous Intelligence and e-Mobility &middot; <a href="https://github.com/afaq005/VROSA">github.com/afaq005/VROSA</a></p>
   </div>
 </footer>
 
