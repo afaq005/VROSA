@@ -284,21 +284,7 @@ code, .mono{font-family:var(--f-mono);}
 }
 @media(max-width:720px){ .stats{grid-template-columns:repeat(2,1fr);} }
 
-   .architecture-media {
-  width: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: visible;
-}
 
-.architecture-image {
-  width: 85%;
-  max-width: 1100px;
-  height: auto;
-  object-fit: contain;
-  display: block;
-}
    
 /* ============================================================
    MEDIA PLACEHOLDERS (photos / video)
@@ -330,8 +316,27 @@ code, .mono{font-family:var(--f-mono);}
 @media(max-width:720px){ .media-grid{grid-template-columns:1fr 1fr;} }
 figcaption{
   margin-top:8px; font-size:13px; color:var(--text-faint);
+.architecture-media {
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible !important;
 }
 
+.architecture-media img.architecture-image {
+  width: 55% !important;
+  max-width: 850px !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  transform: none !important;
+  display: block;
+}
+   
 /* ============================================================
    PIPELINE / ARCHITECTURE STRIP
    ============================================================ */
