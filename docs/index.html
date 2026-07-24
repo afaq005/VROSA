@@ -531,7 +531,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VROSA</span></div>
     <h2>Abstract</h2>
-    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks — adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend — cloud, local, or remote — with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
+    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend such as cloud, local, or remote with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
   </div>
 </section>
 
@@ -657,7 +657,7 @@ footer a{color:var(--text-dim);}
       </tbody>
     </table>
     </div>
-    <p>LLaVA V5's near-parity with the cloud backend, despite running fully offline, is the operationally relevant result — it makes runtime backend switching a genuine connectivity/cost trade-off rather than a pure performance one.</p>
+    <p>LLaVA V5's near-parity with the cloud backend, despite running fully offline, is the operationally relevant result it makes runtime backend switching a genuine connectivity/cost trade-off rather than a pure performance one.</p>
   </div>
 </section>
 
