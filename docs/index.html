@@ -95,16 +95,6 @@ body::before{
 }
 
 section{padding:88px 0; border-bottom:1px solid var(--line-soft);}
-.abstract-section{text-align:center;}
-.abstract-section h2{margin-bottom:22px;}
-.abstract-section p{
-  text-align:justify;
-  max-width:760px;
-  margin:0 auto;
-  color:var(--text-dim);
-}
-.abstract-section .eyebrow{justify-content:center;}
-.abstract-section .eyebrow::after{display:none;}
 h2{
   font-family:var(--f-display); font-weight:600;
   font-size:clamp(1.5rem, 2.4vw, 2rem);
@@ -114,7 +104,7 @@ h3{
   font-family:var(--f-display); font-weight:600;
   font-size:1.15rem; margin:28px 0 10px;
 }
-p{color:var(--text-dim); max-width:70ch;}
+p{color:var(--text-dim); max-width:70ch; text-align:justify;}
 p + p{margin-top:14px;}
 strong{color:var(--text); font-weight:600;}
 code, .mono{font-family:var(--f-mono);}
@@ -124,13 +114,13 @@ code, .mono{font-family:var(--f-mono);}
    ============================================================ */
 .hero{
   min-height:auto;
-  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  display:flex; flex-direction:column; justify-content:center;
   position:relative;
-  padding:100px 0 60px;
+  padding:0 0 60px;
   border-bottom:1px solid var(--line-soft);
   overflow:hidden;
-  text-align:center;
 }
+.hero .wrap{padding-top:40px;}
 .hero h1{
   font-family:var(--f-display); font-weight:700;
   font-size:clamp(2.2rem, 5.5vw, 3.6rem);
@@ -142,7 +132,7 @@ code, .mono{font-family:var(--f-mono);}
   font-size:clamp(1.05rem, 1.6vw, 1.25rem);
   color:var(--text-dim);
   max-width:680px;
-  margin:22px auto 0;
+  margin-top:22px;
   font-weight:400;
 }
 .authors{
@@ -150,7 +140,6 @@ code, .mono{font-family:var(--f-mono);}
   font-size:0.95rem;
   color:var(--text-dim);
   max-width:640px;
-  margin-left:auto; margin-right:auto;
 }
 .authors b{color:var(--text); font-weight:500;}
 .affil{
@@ -161,7 +150,6 @@ code, .mono{font-family:var(--f-mono);}
 .links{
   display:flex; flex-wrap:wrap; gap:12px;
   margin-top:28px;
-  justify-content:center;
 }
 .btn{
   font-family:var(--f-mono);
@@ -178,96 +166,67 @@ code, .mono{font-family:var(--f-mono);}
 .btn.primary{background:var(--cyan-bright); color:#04222b; border-color:var(--cyan-bright); font-weight:600;}
 .btn.primary:hover{background:#33ddff; color:#04222b;}
 
-/* --- HUD panel --- */
-.hud{
-  margin-top:56px;
+/* --- Hero banner (full-width background image behind centered title) --- */
+.hero-banner{
   position:relative;
-  aspect-ratio:16/8.4;
-  max-width:100%;
+  width:100%;
+  min-height:320px;
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden;
+  /* Add the background figure at ./static/images/hero_banner.jpg */
+  background:
+    linear-gradient(rgba(10,14,19,0.55), rgba(10,14,19,0.55)),
+    var(--bg-panel2) center/cover no-repeat;
+  background-image:
+    linear-gradient(rgba(10,14,19,0.55), rgba(10,14,19,0.55)),
+    url('./static/images/hero_banner.jpg');
+  background-size:cover;
+  background-position:center;
+}
+.hero-banner h1{
+  position:relative;
+  text-align:center;
+  color:#fff;
+}
+.hero-banner h1 span{color:var(--cyan-bright);}
+
+/* --- Logo row under the button links --- */
+.logo-row{
+  margin-top:28px;
+  display:flex;
+  justify-content:center;
+}
+.hero-logo{
+  height:52px;
+  width:auto;
+}
+
+/* --- Two phone-recorded clips, side by side --- */
+.phone-videos{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  margin-top:44px;
+}
+.phone-video{
+  position:relative;
+  aspect-ratio:9/16;
+  background:var(--bg-panel);
   border:1px solid var(--line);
   border-radius:10px;
-  background:
-    radial-gradient(ellipse at 30% 20%, #16202a 0%, #0d1319 55%, #090c10 100%);
   overflow:hidden;
 }
-.hud .grid-overlay{
-  position:absolute; inset:0;
-  background-image:
-    linear-gradient(rgba(0,212,255,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,255,0.05) 1px, transparent 1px);
-  background-size:40px 40px;
-}
-#hero-video{
-  position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-}
-.hud .placeholder-note{
+.phone-video video{width:100%; height:100%; object-fit:cover; display:block;}
+.phone-video-note{
   position:absolute; inset:0;
   display:flex; align-items:center; justify-content:center;
   flex-direction:column; gap:6px;
   color:var(--text-faint);
-  font-family:var(--f-mono); font-size:12.5px; text-align:center;
+  font-family:var(--f-mono); font-size:12px; text-align:center;
+  padding:16px;
 }
-.hud .placeholder-note .fname{color:var(--text-dim);}
-
-.hud .topbar{
-  position:absolute; top:0; left:0; right:0; height:34px;
-  background:rgba(0,0,0,0.55);
-  display:flex; align-items:center; padding:0 14px;
-  font-family:var(--f-mono); font-size:12px; color:var(--cyan-bright);
-  letter-spacing:0.02em;
-  border-bottom:1px solid rgba(0,212,255,0.15);
-  white-space:nowrap; overflow:hidden;
-}
-.hud .bottombar{
-  position:absolute; bottom:0; left:0; right:0; height:52px;
-  background:rgba(0,0,0,0.55);
-  padding:8px 14px;
-  font-family:var(--f-mono); font-size:12px;
-  border-top:1px solid rgba(0,212,255,0.15);
-}
-.hud .distbar-track{
-  height:6px; background:rgba(255,255,255,0.08); border-radius:3px; margin-top:6px; overflow:hidden;
-}
-.hud .distbar-fill{height:100%; background:var(--green); width:38%; transition:width .6s ease;}
-.hud .crosshair{
-  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:100px; height:100px;
-}
-.hud .crosshair::before, .hud .crosshair::after{
-  content:""; position:absolute; background:rgba(255,255,255,0.55);
-}
-.hud .crosshair::before{ top:50%; left:5px; right:5px; height:2px; transform:translateY(-1px);}
-.hud .crosshair::after{ left:50%; top:5px; bottom:5px; width:2px; transform:translateX(-1px);}
-.hud .crosshair-ring{
-  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  width:150px; height:150px; border-radius:50%;
-  border:1px solid rgba(255,255,255,0.35);
-}
-.hud .detbox{
-  position:absolute; border:2px solid var(--cyan-bright); border-radius:2px;
-}
-.hud .detbox .chip{
-  position:absolute; top:-20px; left:0;
-  background:#003444; color:var(--cyan-bright);
-  font-family:var(--f-mono); font-size:10.5px;
-  padding:1px 6px; white-space:nowrap; border-radius:2px;
-}
-.hud .detbox.g{border-color:#a5d6a7;}
-.hud .detbox.g .chip{background:#143c14; color:#a5d6a7;}
-.hud .scanline{
-  position:absolute; left:0; right:0; height:2px;
-  background:linear-gradient(90deg, transparent, rgba(0,212,255,0.55), transparent);
-  animation:scan 5.5s linear infinite;
-}
-@keyframes scan{
-  0%{top:34px;} 100%{top:calc(100% - 52px);}
-}
-@media (prefers-reduced-motion: reduce){
-  .hud .scanline{animation:none; display:none;}
-}
-.hud-caption{
-  margin-top:10px; font-family:var(--f-mono); font-size:12px; color:var(--text-faint);
-}
+.phone-video-note .fname{color:var(--text-dim);}
+@media(max-width:600px){ .phone-videos{grid-template-columns:1fr;} }
 
 /* ============================================================
    STAT ROW
@@ -440,8 +399,10 @@ footer a{color:var(--text-dim);}
      HERO
      ============================================================ -->
 <section class="hero">
-  <div class="wrap">
+  <div class="hero-banner">
     <h1>VROSA<span>.</span></h1>
+  </div>
+  <div class="wrap">
     <p class="subtitle">Vision-Language Agentic Control for Autonomous Mobile Robots — a tool-constrained agent that turns plain-English commands into safe, closed-loop navigation, from simulation to outdoor hardware.</p>
 
     <div class="authors">
@@ -459,36 +420,32 @@ footer a{color:var(--text-dim);}
       <a class="btn" href="#cite">Cite</a>
     </div>
 
-    <!-- Signature element: a live recreation of VROSA's real HUD overlay, wrapping a real <video> tag -->
-    <div class="hud" role="img" aria-label="VROSA live camera HUD overlay">
-      <video id="hero-video" autoplay loop muted playsinline
-        onloadeddata="document.querySelector('.hud .placeholder-note').style.display='none'">
-        <source src="./static/videos/hero_loop.mp4" type="video/mp4">
-      </video>
-      <div class="grid-overlay"></div>
-      <div class="placeholder-note">
-        <span>DROP REPLACEMENT FOOTAGE HERE</span>
-        <span class="fname">./static/videos/hero_loop.mp4</span>
-        <span>(plays automatically once the file exists — this HUD is the CSS/JS fallback shown until then)</span>
+    <!-- Add the JBNU / CAiM Lab logo file at ./static/images/jbnu_logo.png -->
+    <div class="logo-row">
+      <img class="hero-logo" src="./static/images/jbnu_logo.png" alt="Jeonbuk National University">
+    </div>
+
+    <!-- Two phone-recorded clips, side by side -->
+    <div class="phone-videos">
+      <div class="phone-video">
+        <video autoplay loop muted playsinline onloadeddata="this.nextElementSibling.style.display='none'">
+          <source src="./static/videos/phone_clip_1.mp4" type="video/mp4">
+        </video>
+        <div class="phone-video-note">
+          <span>DROP FOOTAGE HERE</span>
+          <span class="fname">./static/videos/phone_clip_1.mp4</span>
+        </div>
       </div>
-      <div class="crosshair-ring"></div>
-      <div class="crosshair"></div>
-      <div class="detbox" style="top:34%; left:58%; width:14%; height:30%;">
-        <span class="chip">green e-bike &nbsp;2.4m</span>
-      </div>
-      <div class="detbox g" style="top:44%; left:14%; width:12%; height:20%;">
-        <span class="chip">bench &nbsp;6.1m</span>
-      </div>
-      <div class="scanline"></div>
-      <div class="topbar">
-        VROSA &nbsp;|&nbsp; x=<span id="hx">2.14</span>m &nbsp;y=<span id="hy">-0.83</span>m &nbsp;hdg=<span id="hh">24.3</span>&deg; &nbsp;|&nbsp; [NAVIGATING] &nbsp;|&nbsp; VLM:CLAUDE &nbsp;|&nbsp; 2 obj &nbsp;Depth-only
-      </div>
-      <div class="bottombar">
-        [Depth] closest: 2.40m &nbsp;|&nbsp; Target: green e-bike
-        <div class="distbar-track"><div class="distbar-fill" id="distfill"></div></div>
+      <div class="phone-video">
+        <video autoplay loop muted playsinline onloadeddata="this.nextElementSibling.style.display='none'">
+          <source src="./static/videos/phone_clip_2.mp4" type="video/mp4">
+        </video>
+        <div class="phone-video-note">
+          <span>DROP FOOTAGE HERE</span>
+          <span class="fname">./static/videos/phone_clip_2.mp4</span>
+        </div>
       </div>
     </div>
-    <div class="hud-caption">Live recreation of VROSA's onboard HUD overlay (see <code>hud.py</code>) — telemetry, detections, and distance bar burned into every camera frame.</div>
   </div>
 </section>
 
@@ -556,30 +513,6 @@ footer a{color:var(--text-dim);}
 <span class="t-ts">[01:36:04]</span> <span class="t-warn">[WARN]</span> Non-target obstacle 0.62m &mdash; sidestepping right
 <span class="t-ts">[01:36:11]</span> <span class="t-tag">[VROSA]</span> Leg 4: scouting (VLM call #4) &rarr; dir=CENTER  ~2.1m
 <span class="t-ts">[01:36:14]</span> <span class="t-ok">[VROSA]</span> Arrival confirmed &middot; traveled 15.5m &middot; FDT 1.50m &middot; 10 VLM calls total
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     PERCEPTION
-     ============================================================ -->
-<section id="perception">
-  <div class="wrap">
-    <div class="eyebrow"><span class="tag">PERC</span><span class="ts">sensor_fusion</span></div>
-    <h2>LiDAR when it's there. A camera when it isn't.</h2>
-    <p>Every detection's distance is resolved by a priority function over whatever sensing channels are actually available on the platform &mdash; a real constraint, since the AgileX Scout&nbsp;2.0 hardware trials run entirely camera-only. LiDAR (when present) projects each bounding box's angular span onto the point cloud via bearing angle; without it, a depth-map centre-crop with an adaptive percentile — biased toward the nearest surface up close, more median-like at range — takes over. No architecture change is required to move between the two.</p>
-
-    <div class="pipeline">
-      <div class="pipe-stage"><div class="n">01</div><h4>YOLO</h4><p>Fixed-class detection, ~15&nbsp;fps GPU fast loop. Low latency, bounded vocabulary.</p></div>
-      <div class="pipe-stage"><div class="n">02</div><h4>GroundingDINO</h4><p>Open-vocabulary grounding, ~1&nbsp;fps CPU slow loop. Free-form text prompts for arbitrary objects.</p></div>
-      <div class="pipe-stage"><div class="n">03</div><h4>Depth Anything V2</h4><p>Metric monocular depth. Camera-only distance fallback when LiDAR is unavailable.</p></div>
-      <div class="pipe-stage"><div class="n">04</div><h4>LiDAR (optional)</h4><p>Bearing-angle bbox projection, 20th-percentile return. Primary channel when present.</p></div>
-    </div>
-
-    <div class="media-grid">
-      <figure><div class="media"><span>DETECTION OVERLAY</span><span class="fname">./static/images/det_overlay.jpg</span></div><figcaption>YOLO + GroundingDINO boxes with metric distance chips, live HUD stream.</figcaption></figure>
-      <figure><div class="media"><span>DEPTH MAP</span><span class="fname">./static/images/depth_map.jpg</span></div><figcaption>Depth Anything V2 metric output, camera-only mode.</figcaption></figure>
-      <figure><div class="media"><span>DASHBOARD</span><span class="fname">./static/images/dashboard.png</span></div><figcaption>Live Flask dashboard: stream, telemetry, VLM/perception toggles.</figcaption></figure>
     </div>
   </div>
 </section>
@@ -735,26 +668,6 @@ python3 vrosa_live.py
     <p>Jeonbuk National University &middot; Center for Autonomous Intelligence and e-Mobility &middot; <a href="https://github.com/afaq005/VROSA">github.com/afaq005/VROSA</a></p>
   </div>
 </footer>
-
-<script>
-// Gentle telemetry tick on the hero HUD — cosmetic, respects reduced motion
-(function(){
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const hx = document.getElementById('hx');
-  const hy = document.getElementById('hy');
-  const hh = document.getElementById('hh');
-  const fill = document.getElementById('distfill');
-  if(!hx) return;
-  let t = 0;
-  setInterval(()=>{
-    t += 0.15;
-    hx.textContent = (2.14 + Math.sin(t)*0.4).toFixed(2);
-    hy.textContent = (-0.83 + Math.cos(t*0.7)*0.3).toFixed(2);
-    hh.textContent = (24.3 + Math.sin(t*0.5)*6).toFixed(1);
-    fill.style.width = (30 + Math.sin(t*0.4)*15) + '%';
-  }, 700);
-})();
-</script>
 
 </body>
 </html>
