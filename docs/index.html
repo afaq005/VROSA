@@ -314,21 +314,27 @@ code, .mono{font-family:var(--f-mono);}
 }
 .media-grid.two{grid-template-columns:repeat(2,1fr);}
 @media(max-width:720px){ .media-grid{grid-template-columns:1fr 1fr;} }
-figcaption{
-  margin-top:8px; font-size:13px; color:var(--text-faint);
+figcaption {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
 .architecture-media {
   width: 100%;
   height: auto !important;
   min-height: 0 !important;
+  aspect-ratio: auto !important;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: visible !important;
+  padding: 20px;
 }
 
 .architecture-media img.architecture-image {
   width: 55% !important;
-  max-width: 850px !important;
+  max-width: 750px !important;
   height: auto !important;
   max-height: none !important;
   object-fit: contain !important;
@@ -583,6 +589,8 @@ footer a{color:var(--text-dim);}
     </span>
   </div>
 </div>
+
+  </div>
 </section>
 
 <!-- ============================================================
