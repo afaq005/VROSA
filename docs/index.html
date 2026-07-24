@@ -284,6 +284,22 @@ code, .mono{font-family:var(--f-mono);}
 }
 @media(max-width:720px){ .stats{grid-template-columns:repeat(2,1fr);} }
 
+   .architecture-media {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: visible;
+}
+
+.architecture-image {
+  width: 85%;
+  max-width: 1100px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+   
 /* ============================================================
    MEDIA PLACEHOLDERS (photos / video)
    ============================================================ */
@@ -545,15 +561,23 @@ footer a{color:var(--text-dim);}
       <div class="stat"><div class="num">0</div><div class="label">lines of agent/tool/perception code changed to port platforms</div></div>
     </div>
 
-    <div class="media">
-      <img src="./static/images/architecture.jpg" alt="System architecture diagram" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-      <div class="media-fallback">
-        <span>SYSTEM ARCHITECTURE DIAGRAM</span>
-        <span class="fname">./static/images/architecture.jpg</span>
-        <span>(4-layer overview — NL interface, agent + tool registry, perception + VLM, ROS&nbsp;2 execution)</span>
-      </div>
-    </div>
+<div class="media architecture-media">
+  <img
+    src="./static/images/architecture.jpg"
+    alt="System architecture diagram"
+    class="architecture-image"
+    onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+  >
+
+  <div class="media-fallback">
+    <span>SYSTEM ARCHITECTURE DIAGRAM</span>
+    <span class="fname">./static/images/architecture.jpg</span>
+    <span>
+      (4-layer overview — NL interface, agent + tool registry,
+      perception + VLM, ROS&nbsp;2 execution)
+    </span>
   </div>
+</div>
 </section>
 
 <!-- ============================================================
@@ -619,18 +643,6 @@ footer a{color:var(--text-dim);}
     <p style="font-size:12.5px; color:var(--text-faint);">&#42; Partial-credit rate (partial success weighted 0.5); 91.7&ndash;95.8% binary bounds. Full 24-trial breakdown in the paper's appendix.</p>
 
     <h3>Sim vs. hardware</h3>
-    <div class="tblwrap">
-    <table>
-      <thead><tr><th>Metric</th><th>Sim (Nova Carter)</th><th>HW (Scout 2.0)</th></tr></thead>
-      <tbody>
-        <tr><td>Navigation success rate</td><td>94.0%</td><td>93.75%&#42;</td></tr>
-        <tr><td>Sim. depth-only baseline</td><td>87.0%</td><td>&mdash;</td></tr>
-        <tr><td>VLM queries per task</td><td>2.0</td><td>6.4</td></tr>
-        <tr><td>Total trials</td><td>50</td><td>24</td></tr>
-        <tr><td>Yaw error (360&deg; scan)</td><td>4.1&deg;</td><td>1.3&deg;</td></tr>
-      </tbody>
-    </table>
-    </div>
 
     <p>The hardware partial-credit NSR of 93.75% is consistent with the simulation depth-only baseline (87%), suggesting outdoor natural lighting does not degrade monocular depth estimation relative to indoor simulation conditions. The higher VLM query count (6.4 vs&nbsp;2.0) and longer completion time reflect the substantially greater navigation distances in hardware trials (mean 7.7&nbsp;m start distance vs&nbsp;2&ndash;4&nbsp;m in simulation). A consistent odometry overshoot on the Scout&nbsp;2.0 skid-steer chassis was observed and is correctable with a single calibration coefficient.</p>
     <figure class="paper-figure">
