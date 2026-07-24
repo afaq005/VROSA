@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VROSA: Vision-Language Agentic Control for Autonomous Mobile Robots</title>
+<meta name="description" content="VROSA: a vision-language agent framework for natural language control of mobile robots. Constrained tool registry, hot-swappable VLM backends, LiDAR-optional perception. Validated in Isaac Sim and on a physical AgileX Scout 2.0.">
+<meta property="og:title" content="VROSA: Vision-Language Agentic Control for Autonomous Mobile Robots">
+<meta property="og:description" content="A tool-constrained vision-language agent for natural language robot control — from Isaac Sim to outdoor hardware trials.">
+<meta property="og:image" content="./static/images/social_preview.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --bg:        #ffffff;
+  --bg-panel:  #f6f8fa;
+  --bg-panel2: #eef1f4;
+  --line:      #dde2e8;
+  --line-soft: #eceff2;
+  --text:      #14181f;
+  --text-dim:  #55606b;
+  --text-faint:#8a94a0;
+
+  --cyan:      #0e7490;
+  --cyan-bright:#00b8d9;
+  --cyan-dim:  #e2f2f6;
+  --amber:     #ffc800;
+  --amber-dark:#a35c00;
+  --red:       #ff3c3c;
+  --green:     #37dc8c;
+
+  --f-display: 'Space Grotesk', sans-serif;
+  --f-body:    'Inter', sans-serif;
+  --f-mono:    'IBM Plex Mono', monospace;
+
+  --maxw: 920px;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--f-body);
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--cyan); text-decoration:none;}
+a:hover{text-decoration:underline;}
+a:focus-visible, button:focus-visible{outline:2px solid var(--cyan); outline-offset:3px;}
+
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px;}
+
+/* faint scanline texture on the whole page — subtle, not decorative-for-its-own-sake */
+body::before{
+  content:"";
+  position:fixed; inset:0; pointer-events:none; z-index:9999;
+  background:repeating-linear-gradient(
+    to bottom, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px,
+    transparent 1px, transparent 3px
+  );
+  mix-blend-mode:overlay;
+}
+
+/* ============================================================
+   EYEBROW / SECTION LABELS — real logger.py tags used as structure
+   ============================================================ */
+.eyebrow{
+  display:flex; align-items:center; gap:10px;
+  font-family:var(--f-mono);
+  font-size:12.5px; letter-spacing:0.04em;
+  color:var(--cyan);
+  margin-bottom:14px;
+}
+.eyebrow .tag{
+  background:var(--cyan-dim);
+  border:1px solid rgba(0,212,255,0.35);
+  color:var(--cyan);
+  padding:2px 8px;
+  border-radius:3px;
+}
+.eyebrow .ts{color:var(--text-faint);}
+.eyebrow::after{
+  content:"";
+  flex:1;
+  height:1px;
+  background:var(--line);
+}
+
+section{padding:88px 0; border-bottom:1px solid var(--line-soft);}
+h2{
+  font-family:var(--f-display); font-weight:600;
+  font-size:clamp(1.5rem, 2.4vw, 2rem);
+  margin-bottom:20px; letter-spacing:-0.01em;
+}
+h3{
+  font-family:var(--f-display); font-weight:600;
+  font-size:1.15rem; margin:28px 0 10px;
+}
+p{color:var(--text-dim); max-width:70ch;}
+p + p{margin-top:14px;}
+strong{color:var(--text); font-weight:600;}
+code, .mono{font-family:var(--f-mono);}
+
+/* ============================================================
+   HERO — a live recreation of VROSA's own HUD overlay
+   ============================================================ */
+.hero{
+  min-height:100vh;
+  display:flex; flex-direction:column; justify-content:center;
+  position:relative;
+  padding:120px 0 60px;
+  border-bottom:1px solid var(--line-soft);
+  overflow:hidden;
+}
+.hero-kicker{
+  font-family:var(--f-mono); font-size:13px; color:var(--text-faint);
+  letter-spacing:0.08em; text-transform:uppercase; margin-bottom:18px;
+}
+.hero h1{
+  font-family:var(--f-display); font-weight:700;
+  font-size:clamp(2.6rem, 7vw, 5rem);
+  letter-spacing:-0.02em; line-height:0.98;
+  color:var(--text);
+}
+.hero h1 span{color:var(--cyan);}
+.hero .subtitle{
+  font-size:clamp(1.05rem, 1.6vw, 1.3rem);
+  color:var(--text-dim);
+  max-width:640px;
+  margin-top:22px;
+  font-weight:400;
+}
+.authors{
+  margin-top:32px;
+  font-size:0.95rem;
+  color:var(--text-dim);
+}
+.authors b{color:var(--text); font-weight:500;}
+.affil{
+  margin-top:6px;
+  font-size:0.85rem;
+  color:var(--text-faint);
+}
+.links{
+  display:flex; flex-wrap:wrap; gap:12px;
+  margin-top:32px;
+}
+.btn{
+  font-family:var(--f-mono);
+  font-size:13.5px;
+  padding:10px 18px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  color:var(--text);
+  display:inline-flex; align-items:center; gap:8px;
+  transition:border-color .15s, color .15s, background .15s;
+  background:var(--bg-panel);
+}
+.btn:hover{border-color:var(--cyan); color:var(--cyan); text-decoration:none; background:var(--cyan-dim);}
+.btn.primary{background:var(--cyan-bright); color:#04222b; border-color:var(--cyan-bright); font-weight:600;}
+.btn.primary:hover{background:#33ddff; color:#04222b;}
+
+/* --- HUD panel --- */
+.hud{
+  margin-top:56px;
+  position:relative;
+  aspect-ratio:16/8.4;
+  max-width:100%;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:
+    radial-gradient(ellipse at 30% 20%, #16202a 0%, #0d1319 55%, #090c10 100%);
+  overflow:hidden;
+}
+.hud .grid-overlay{
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.05) 1px, transparent 1px);
+  background-size:40px 40px;
+}
+.hud .placeholder-note{
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:6px;
+  color:var(--text-faint);
+  font-family:var(--f-mono); font-size:12.5px; text-align:center;
+}
+.hud .placeholder-note .fname{color:var(--text-dim);}
+
+.hud .topbar{
+  position:absolute; top:0; left:0; right:0; height:34px;
+  background:rgba(0,0,0,0.55);
+  display:flex; align-items:center; padding:0 14px;
+  font-family:var(--f-mono); font-size:12px; color:var(--cyan-bright);
+  letter-spacing:0.02em;
+  border-bottom:1px solid rgba(0,212,255,0.15);
+  white-space:nowrap; overflow:hidden;
+}
+.hud .bottombar{
+  position:absolute; bottom:0; left:0; right:0; height:52px;
+  background:rgba(0,0,0,0.55);
+  padding:8px 14px;
+  font-family:var(--f-mono); font-size:12px;
+  border-top:1px solid rgba(0,212,255,0.15);
+}
+.hud .distbar-track{
+  height:6px; background:rgba(255,255,255,0.08); border-radius:3px; margin-top:6px; overflow:hidden;
+}
+.hud .distbar-fill{height:100%; background:var(--green); width:38%; transition:width .6s ease;}
+.hud .crosshair{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:100px; height:100px;
+}
+.hud .crosshair::before, .hud .crosshair::after{
+  content:""; position:absolute; background:rgba(255,255,255,0.55);
+}
+.hud .crosshair::before{ top:50%; left:5px; right:5px; height:2px; transform:translateY(-1px);}
+.hud .crosshair::after{ left:50%; top:5px; bottom:5px; width:2px; transform:translateX(-1px);}
+.hud .crosshair-ring{
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:150px; height:150px; border-radius:50%;
+  border:1px solid rgba(255,255,255,0.35);
+}
+.hud .detbox{
+  position:absolute; border:2px solid var(--cyan-bright); border-radius:2px;
+}
+.hud .detbox .chip{
+  position:absolute; top:-20px; left:0;
+  background:#003444; color:var(--cyan-bright);
+  font-family:var(--f-mono); font-size:10.5px;
+  padding:1px 6px; white-space:nowrap; border-radius:2px;
+}
+.hud .detbox.g{border-color:#a5d6a7;}
+.hud .detbox.g .chip{background:#143c14; color:#a5d6a7;}
+.hud .scanline{
+  position:absolute; left:0; right:0; height:2px;
+  background:linear-gradient(90deg, transparent, rgba(0,212,255,0.55), transparent);
+  animation:scan 5.5s linear infinite;
+}
+@keyframes scan{
+  0%{top:34px;} 100%{top:calc(100% - 52px);}
+}
+@media (prefers-reduced-motion: reduce){
+  .hud .scanline{animation:none; display:none;}
+}
+.hud-caption{
+  margin-top:10px; font-family:var(--f-mono); font-size:12px; color:var(--text-faint);
+}
+
+/* ============================================================
+   STAT ROW
+   ============================================================ */
+.stats{
+  display:grid; grid-template-columns:repeat(4, 1fr); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:8px; overflow:hidden;
+  margin:36px 0;
+}
+.stat{
+  background:var(--bg-panel);
+  padding:22px 18px;
+}
+.stat .num{
+  font-family:var(--f-mono); font-weight:600;
+  font-size:1.9rem; color:var(--cyan);
+  line-height:1;
+}
+.stat .num small{font-size:1rem; color:var(--text-dim); font-weight:400;}
+.stat .label{
+  margin-top:8px; font-size:12.5px; color:var(--text-dim);
+  font-family:var(--f-mono); line-height:1.4;
+}
+@media(max-width:720px){ .stats{grid-template-columns:repeat(2,1fr);} }
+
+/* ============================================================
+   MEDIA PLACEHOLDERS (photos / video)
+   ============================================================ */
+.media{
+  border:1px dashed var(--line);
+  border-radius:8px;
+  background:var(--bg-panel);
+  aspect-ratio:16/9;
+  display:flex; align-items:center; justify-content:center;
+  flex-direction:column; gap:6px;
+  color:var(--text-faint);
+  font-family:var(--f-mono); font-size:12.5px;
+  text-align:center; padding:20px;
+}
+.media .fname{color:var(--cyan);}
+.media-grid{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:20px;
+}
+.media-grid.two{grid-template-columns:repeat(2,1fr);}
+@media(max-width:720px){ .media-grid{grid-template-columns:1fr 1fr;} }
+figcaption{
+  margin-top:8px; font-size:13px; color:var(--text-faint);
+}
+
+/* ============================================================
+   PIPELINE / ARCHITECTURE STRIP
+   ============================================================ */
+.pipeline{
+  display:flex; align-items:stretch; gap:0; margin:32px 0;
+  overflow-x:auto; border:1px solid var(--line); border-radius:8px;
+}
+.pipe-stage{
+  flex:1; min-width:150px;
+  padding:20px 16px;
+  border-right:1px solid var(--line);
+  background:var(--bg-panel);
+}
+.pipe-stage:last-child{border-right:none;}
+.pipe-stage .n{font-family:var(--f-mono); font-size:11px; color:var(--cyan); margin-bottom:8px;}
+.pipe-stage h4{font-family:var(--f-display); font-size:0.95rem; font-weight:600; margin-bottom:6px;}
+.pipe-stage p{font-size:12.5px; color:var(--text-faint); max-width:none;}
+
+/* ============================================================
+   NAV LOOP DIAGRAM (signature interactive element)
+   ============================================================ */
+.navloop{
+  border:1px solid var(--line); border-radius:8px; background:var(--bg-panel);
+  padding:28px; margin:28px 0;
+}
+.navloop-track{
+  position:relative; height:64px; margin:20px 0 34px;
+  background:
+    repeating-linear-gradient(90deg, var(--line-soft) 0 1px, transparent 1px 60px);
+  border-radius:4px;
+}
+.navloop-track .robot{
+  position:absolute; top:50%; left:4%; transform:translate(-50%,-50%);
+  width:14px; height:14px; border-radius:3px; background:var(--cyan-bright);
+  box-shadow:0 0 12px rgba(0,212,255,0.8);
+  animation:navmove 6s ease-in-out infinite;
+}
+@keyframes navmove{
+  0%{left:4%;} 22%{left:32%;} 24%{left:32%;} 48%{left:58%;} 50%{left:58%;} 80%{left:88%;} 100%{left:88%;}
+}
+.navloop-track .goal{
+  position:absolute; top:50%; right:2%; transform:translate(50%,-50%);
+  width:10px; height:10px; border-radius:50%; background:var(--green);
+  box-shadow:0 0 10px rgba(55,220,140,0.7);
+}
+.navloop-legend{display:flex; flex-wrap:wrap; gap:22px; font-size:13px; color:var(--text-dim);}
+.navloop-legend .dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:7px;}
+@media (prefers-reduced-motion: reduce){
+  .navloop-track .robot{animation:none; left:50%;}
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+table{width:100%; border-collapse:collapse; margin:20px 0; font-size:14px;}
+th, td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--line-soft);}
+th{
+  font-family:var(--f-mono); font-size:11.5px; letter-spacing:0.03em;
+  color:var(--text-faint); text-transform:uppercase; font-weight:500;
+  border-bottom:1px solid var(--line);
+}
+td{color:var(--text-dim);}
+tr:last-child td{border-bottom:none;}
+td.hl, th.hl{color:var(--cyan);}
+.tblwrap{overflow-x:auto;}
+
+/* ============================================================
+   LOG TERMINAL BLOCK
+   ============================================================ */
+.terminal{
+  background:#070a0d; border:1px solid var(--line); border-radius:8px;
+  padding:18px 20px; font-family:var(--f-mono); font-size:12.5px; line-height:1.9;
+  overflow-x:auto; margin:24px 0; color:var(--text-dim);
+}
+.terminal .t-ts{color:var(--text-faint);}
+.terminal .t-tag{color:var(--cyan-bright);}
+.terminal .t-warn{color:var(--amber);}
+.terminal .t-ok{color:var(--green);}
+
+/* ============================================================
+   LIMITATION CARDS
+   ============================================================ */
+.limits{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:24px;}
+@media(max-width:720px){ .limits{grid-template-columns:1fr;} }
+.limit-card{
+  border:1px solid var(--line); border-radius:8px; padding:18px 20px; background:var(--bg-panel);
+}
+.limit-card .k{
+  font-family:var(--f-mono); font-size:11.5px; color:var(--amber-dark); margin-bottom:8px; letter-spacing:0.03em;
+}
+.limit-card p{font-size:13.5px;}
+
+/* ============================================================
+   FOOTER / CITE
+   ============================================================ */
+.cite-block{
+  background:var(--bg-panel); border:1px solid var(--line); border-radius:8px;
+  padding:20px 22px; font-family:var(--f-mono); font-size:12.5px; color:var(--text-dim);
+  overflow-x:auto; white-space:pre; margin-top:16px;
+}
+footer{padding:60px 0 80px; text-align:center;}
+footer p{margin:0 auto; color:var(--text-faint); font-size:13px; max-width:60ch;}
+footer a{color:var(--text-dim);}
+
+.copy-btn{
+  font-family:var(--f-mono); font-size:11.5px; color:var(--text-faint);
+  border:1px solid var(--line); background:none; border-radius:5px;
+  padding:5px 10px; cursor:pointer; margin-top:10px;
+}
+.copy-btn:hover{color:var(--cyan); border-color:var(--cyan);}
+
+@media(max-width:600px){
+  section{padding:60px 0;}
+  .hero{padding:90px 0 40px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-kicker">IEEE Transactions on Automation Science and Engineering &middot; 2026</div>
+    <h1>VROSA<span>.</span></h1>
+    <p class="subtitle">Vision-Language Agentic Control for Autonomous Mobile Robots — a tool-constrained agent that turns plain-English commands into safe, closed-loop navigation, from simulation to outdoor hardware.</p>
+
+    <div class="authors">
+      <b>Afaq Ahmed</b><sup>1*</sup>, <b>Hassan Eesaar</b><sup>1*</sup>, <b>Deok Jin Lee</b><sup>1&dagger;</sup>
+    </div>
+    <div class="affil">
+      <sup>1</sup>Jeonbuk National University, Jeonju, Republic of Korea &nbsp;&middot;&nbsp;
+      <sup>*</sup>Equal contribution &nbsp;<sup>&dagger;</sup>Corresponding author
+    </div>
+
+    <div class="links">
+      <a class="btn primary" href="#">Paper (PDF)</a>
+      <a class="btn" href="https://github.com/afaq005/VROSA">Code</a>
+      <a class="btn" href="#video">Demo Video</a>
+      <a class="btn" href="#cite">Cite</a>
+    </div>
+
+    <!-- Signature element: a live recreation of VROSA's real HUD overlay -->
+    <div class="hud" role="img" aria-label="Simulated VROSA live camera HUD overlay">
+      <div class="grid-overlay"></div>
+      <div class="placeholder-note">
+        <span>DROP REPLACEMENT FOOTAGE HERE</span>
+        <span class="fname">./static/videos/hero_loop.mp4</span>
+        <span>(this HUD is a live CSS/JS recreation — swap for real onboard footage anytime)</span>
+      </div>
+      <div class="crosshair-ring"></div>
+      <div class="crosshair"></div>
+      <div class="detbox" style="top:34%; left:58%; width:14%; height:30%;">
+        <span class="chip">green e-bike &nbsp;2.4m</span>
+      </div>
+      <div class="detbox g" style="top:44%; left:14%; width:12%; height:20%;">
+        <span class="chip">bench &nbsp;6.1m</span>
+      </div>
+      <div class="scanline"></div>
+      <div class="topbar">
+        VROSA &nbsp;|&nbsp; x=<span id="hx">2.14</span>m &nbsp;y=<span id="hy">-0.83</span>m &nbsp;hdg=<span id="hh">24.3</span>&deg; &nbsp;|&nbsp; [NAVIGATING] &nbsp;|&nbsp; VLM:CLAUDE &nbsp;|&nbsp; 2 obj &nbsp;Depth-only
+      </div>
+      <div class="bottombar">
+        [Depth] closest: 2.40m &nbsp;|&nbsp; Target: green e-bike
+        <div class="distbar-track"><div class="distbar-fill" id="distfill"></div></div>
+      </div>
+    </div>
+    <div class="hud-caption">Live recreation of VROSA's onboard HUD overlay (see <code>hud.py</code>) — telemetry, detections, and distance bar burned into every camera frame.</div>
+  </div>
+</section>
+
+<!-- ============================================================
+     OVERVIEW
+     ============================================================ -->
+<section id="overview">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">VROSA</span><span class="ts">00:00:01</span></div>
+    <h2>Say what you want. Leave <em>how</em> to the robot.</h2>
+    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks — adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability.</p>
+    <p>The system pairs a hot-swappable vision-language model (VLM) backend — cloud, local, or remote — with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps.</p>
+
+    <div class="stats">
+      <div class="stat"><div class="num">93.75<small>%</small></div><div class="label">partial-credit navigation success rate, 24 outdoor hardware trials</div></div>
+      <div class="stat"><div class="num">23.2<small>m</small></div><div class="label">longest hardware navigation distance, camera-only</div></div>
+      <div class="stat"><div class="num">2</div><div class="label">heterogeneous platforms — Isaac&nbsp;Sim (LiDAR) &amp; Scout&nbsp;2.0 (camera-only)</div></div>
+      <div class="stat"><div class="num">0</div><div class="label">lines of agent/tool/perception code changed to port platforms</div></div>
+    </div>
+
+    <div class="media">
+      <span>SYSTEM ARCHITECTURE DIAGRAM</span>
+      <span class="fname">./static/images/architecture.jpg</span>
+      <span>(4-layer overview — NL interface, agent + tool registry, perception + VLM, ROS&nbsp;2 execution)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     NAVIGATION LOOP
+     ============================================================ -->
+<section id="navigation">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">NAV</span><span class="ts">plan_execute_recheck</span></div>
+    <h2>One VLM call per leg. Every step in between is sensor-only.</h2>
+    <p><code>navigate_to_object</code> runs a plan&ndash;execute&ndash;recheck loop: a single VLM call ("scout") returns a coarse direction and distance; the robot then drives a portion of that estimated distance in small sensor-checked sub-steps — depth and, when available, LiDAR — with no further VLM calls until the leg completes or an obstacle intervenes. Real hardware trials average roughly one VLM query per metre travelled, not per motion step.</p>
+
+    <div class="navloop">
+      <div class="navloop-track">
+        <div class="robot"></div>
+        <div class="goal"></div>
+      </div>
+      <div class="navloop-legend">
+        <span><span class="dot" style="background:var(--cyan-bright)"></span>VLM scout call (sparse)</span>
+        <span><span class="dot" style="background:var(--text-faint)"></span>sensor sub-step (dense, no VLM)</span>
+        <span><span class="dot" style="background:var(--green)"></span>arrival confirmation</span>
+      </div>
+    </div>
+
+    <h3>Grounded on the same field trial shown in the paper's graphical abstract</h3>
+    <div class="terminal">
+<span class="t-ts">[01:35:49]</span> <span class="t-tag">[VROSA]</span> Instruction: "find a smoking zone with green marking and go near it while avoiding nearby obstacles"
+<span class="t-ts">[01:35:50]</span> <span class="t-tag">[VROSA]</span> Leg 1: scouting (VLM call #1) &rarr; dir=RIGHT  ~14.2m
+<span class="t-ts">[01:35:52]</span> <span class="t-tag">[ROBOT]</span> Rotating 20&deg; &middot; leg dist 4.0m &middot; sub-stepping 0.5m &times; 8 (sensor only)
+<span class="t-ts">[01:36:04]</span> <span class="t-warn">[WARN]</span> Non-target obstacle 0.62m &mdash; sidestepping right
+<span class="t-ts">[01:36:11]</span> <span class="t-tag">[VROSA]</span> Leg 4: scouting (VLM call #4) &rarr; dir=CENTER  ~2.1m
+<span class="t-ts">[01:36:14]</span> <span class="t-ok">[VROSA]</span> Arrival confirmed &middot; traveled 15.5m &middot; FDT 1.50m &middot; 10 VLM calls total
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     PERCEPTION
+     ============================================================ -->
+<section id="perception">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">PERC</span><span class="ts">sensor_fusion</span></div>
+    <h2>LiDAR when it's there. A camera when it isn't.</h2>
+    <p>Every detection's distance is resolved by a priority function over whatever sensing channels are actually available on the platform &mdash; a real constraint, since the AgileX Scout&nbsp;2.0 hardware trials run entirely camera-only. LiDAR (when present) projects each bounding box's angular span onto the point cloud via bearing angle; without it, a depth-map centre-crop with an adaptive percentile — biased toward the nearest surface up close, more median-like at range — takes over. No architecture change is required to move between the two.</p>
+
+    <div class="pipeline">
+      <div class="pipe-stage"><div class="n">01</div><h4>YOLO</h4><p>Fixed-class detection, ~15&nbsp;fps GPU fast loop. Low latency, bounded vocabulary.</p></div>
+      <div class="pipe-stage"><div class="n">02</div><h4>GroundingDINO</h4><p>Open-vocabulary grounding, ~1&nbsp;fps CPU slow loop. Free-form text prompts for arbitrary objects.</p></div>
+      <div class="pipe-stage"><div class="n">03</div><h4>Depth Anything V2</h4><p>Metric monocular depth. Camera-only distance fallback when LiDAR is unavailable.</p></div>
+      <div class="pipe-stage"><div class="n">04</div><h4>LiDAR (optional)</h4><p>Bearing-angle bbox projection, 20th-percentile return. Primary channel when present.</p></div>
+    </div>
+
+    <div class="media-grid">
+      <figure><div class="media"><span>DETECTION OVERLAY</span><span class="fname">./static/images/det_overlay.jpg</span></div><figcaption>YOLO + GroundingDINO boxes with metric distance chips, live HUD stream.</figcaption></figure>
+      <figure><div class="media"><span>DEPTH MAP</span><span class="fname">./static/images/depth_map.jpg</span></div><figcaption>Depth Anything V2 metric output, camera-only mode.</figcaption></figure>
+      <figure><div class="media"><span>DASHBOARD</span><span class="fname">./static/images/dashboard.png</span></div><figcaption>Live Flask dashboard: stream, telemetry, VLM/perception toggles.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     HARDWARE / FIELD RESULTS
+     ============================================================ -->
+<section id="hardware">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">HW</span><span class="ts">scout_2.0 &middot; jbnu_campus</span></div>
+    <h2>Off the sim floor, onto a Korean university campus.</h2>
+    <p>Physical trials ran on an AgileX Scout&nbsp;2.0 four-wheel skid-steer UGV with a Jetson AGX Orin 64GB running all perception and agent computation onboard &mdash; camera-only, no LiDAR. Twenty-four navigation trials spanned three outdoor sessions (midday sun and glare, evening, early morning), targets from 0.5&ndash;23.2&nbsp;m, cluttered e-bike/scooter zones, a Korean-text no-parking sign commanded in English, and a person who moved mid-navigation.</p>
+
+    <div class="media-grid">
+      <figure><div class="media"><span>FIELD ENVIRONMENTS</span><span class="fname">./static/images/field_envs.jpg</span></div><figcaption>Representative outdoor test scenes across all three sessions.</figcaption></figure>
+      <figure><div class="media"><span>DISTANCE GENERALIZATION</span><span class="fname">./static/images/distance_gen.jpg</span></div><figcaption>Same scenario at increasing target distance (L1&ndash;L3).</figcaption></figure>
+      <figure><div class="media"><span>MULTI-OBJECT SCENES</span><span class="fname">./static/images/multiobj.jpg</span></div><figcaption>Disambiguation among multiple same-class objects.</figcaption></figure>
+    </div>
+
+    <h3>Session summary</h3>
+    <div class="tblwrap">
+    <table>
+      <thead><tr><th>Session</th><th>Conditions</th><th>Trials</th><th>Success</th><th>Partial</th><th>Failed</th><th class="hl">Rate</th></tr></thead>
+      <tbody>
+        <tr><td>S1</td><td>Sunny / shade / direct glare</td><td>11</td><td>10</td><td>0</td><td>1</td><td class="hl">90.9%</td></tr>
+        <tr><td>S2</td><td>Evening</td><td>5</td><td>5</td><td>0</td><td>0</td><td class="hl">100%</td></tr>
+        <tr><td>S3</td><td>Early morning</td><td>8</td><td>7</td><td>1</td><td>0</td><td class="hl">87.5%</td></tr>
+        <tr><td><strong>Total</strong></td><td>&mdash;</td><td><strong>24</strong></td><td><strong>22</strong></td><td><strong>1</strong></td><td><strong>1</strong></td><td class="hl"><strong>93.75%</strong>&#42;</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="font-size:12.5px; color:var(--text-faint);">&#42; Partial-credit rate (partial success weighted 0.5); 91.7&ndash;95.8% binary bounds. Full 24-trial breakdown in the paper's appendix.</p>
+
+    <h3>Sim vs. hardware</h3>
+    <div class="tblwrap">
+    <table>
+      <thead><tr><th>Metric</th><th>Sim (Nova Carter)</th><th>HW (Scout 2.0)</th></tr></thead>
+      <tbody>
+        <tr><td>Navigation success rate</td><td>94.0%</td><td>93.75%&#42;</td></tr>
+        <tr><td>Sim. depth-only baseline</td><td>87.0%</td><td>&mdash;</td></tr>
+        <tr><td>VLM queries per task</td><td>2.0</td><td>6.4</td></tr>
+        <tr><td>Total trials</td><td>50</td><td>24</td></tr>
+        <tr><td>Yaw error (360&deg; scan)</td><td>4.1&deg;</td><td>1.3&deg;</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     VLM BACKEND COMPARISON
+     ============================================================ -->
+<section id="backends">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">VLM</span><span class="ts">backend_manager</span></div>
+    <h2>Format compliance matters more than description quality.</h2>
+    <p>Three VLM backends were compared under identical fused-mode conditions (50 sim trials each). Claude Sonnet, LLaVA&nbsp;V5, and Phi-4 Base landed within a few points of each other on navigation success &mdash; the differences aren't statistically significant at this sample size. What <em>did</em> separate them was direction-query <strong>format compliance</strong>, which tracked completion time and attempt count far more tightly than raw success rate.</p>
+
+    <div class="tblwrap">
+    <table>
+      <thead><tr><th>Metric</th><th>LLaVA V5 (local)</th><th>Phi-4 (remote)</th><th>Claude Sonnet (cloud)</th></tr></thead>
+      <tbody>
+        <tr><td>Success rate</td><td>94%</td><td>91%</td><td>96%</td></tr>
+        <tr><td>Direction compliance</td><td>97%</td><td>89%</td><td>98%</td></tr>
+        <tr><td>Completion time</td><td>13.8s</td><td>21.4s</td><td>11.2s</td></tr>
+        <tr><td>Runs where</td><td colspan="3">offline / privacy-sensitive &nbsp;&middot;&nbsp; remote GPU server &nbsp;&middot;&nbsp; any OpenAI-compatible cloud endpoint</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>LLaVA V5's near-parity with the cloud backend, despite running fully offline, is the operationally relevant result — it makes runtime backend switching a genuine connectivity/cost trade-off rather than a pure performance one.</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     VIDEO
+     ============================================================ -->
+<section id="video">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">DEMO</span><span class="ts">hardware_trials</span></div>
+    <h2>Watch it navigate</h2>
+    <div class="media" style="aspect-ratio:16/9;">
+      <span>DEMO REEL</span>
+      <span class="fname">./static/videos/nav_demo.mp4</span>
+      <span>hardware trials &middot; 360&deg; scans &middot; disambiguation among multiple e-bikes</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     LIMITATIONS
+     ============================================================ -->
+<section id="limitations">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">LIMIT</span><span class="ts">known_failure_modes</span></div>
+    <h2>Where it breaks</h2>
+    <div class="limits">
+      <div class="limit-card"><div class="k">SENSOR MODALITY DEPENDENCY</div><p>With depth, YOLO, and LiDAR all disabled, VLM-only distance estimation is unreliable enough to prevent arrival confirmation. At least one sensing channel is required.</p></div>
+      <div class="limit-card"><div class="k">SMALL OBJECTS + DIRECT GLARE</div><p>The single confirmed hardware failure: a cola can on a white line under direct midday sun. Same target succeeded in shade. High-contrast glare, not low light, is the issue.</p></div>
+      <div class="limit-card"><div class="k">REFLECTIVE SURFACES</div><p>Metallic objects produce larger depth errors and can trigger early (safe, but imprecise) safety stops from shortened LiDAR returns in simulation.</p></div>
+      <div class="limit-card"><div class="k">VLM DIRECTION INSTABILITY</div><p>Visually symmetric scenes (matching shelves either side of a corridor) can cause the VLM to alternate direction labels across queries.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     GET THE CODE
+     ============================================================ -->
+<section id="code">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">ROS</span><span class="ts">get_started</span></div>
+    <h2>Run it yourself</h2>
+    <p>Robot-agnostic by design — porting between the simulated Nova Carter and the physical Scout&nbsp;2.0 required changing only ROS&nbsp;2 topic constants, with zero changes to agent, tool, perception, or motion code.</p>
+    <div class="terminal">
+git clone https://github.com/afaq005/VROSA.git
+cd VROSA &amp;&amp; pip install -r requirements.txt
+<span class="t-ts"># configure VLM/LLM backends in config.py, then:</span>
+python3 vrosa_live.py
+    </div>
+    <a class="btn primary" href="https://github.com/afaq005/VROSA">View full setup on GitHub &rarr;</a>
+  </div>
+</section>
+
+<!-- ============================================================
+     CITATION
+     ============================================================ -->
+<section id="cite">
+  <div class="wrap">
+    <div class="eyebrow"><span class="tag">CITE</span><span class="ts">bibtex</span></div>
+    <h2>BibTeX</h2>
+    <div class="cite-block" id="bibtex">@article{ahmed2026vrosa,
+  title   = {VROSA: Vision-Language Agentic Control for Autonomous Mobile Robots},
+  author  = {Ahmed, Afaq and Eesaar, Hassan and Lee, Deok Jin},
+  journal = {IEEE Transactions on Automation Science and Engineering},
+  year    = {2026}
+}</div>
+    <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('bibtex').innerText)">Copy BibTeX</button>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>This research was supported by the National Research Foundation of Korea (NRF, RS-2025-02308357; 2020M3C1C1A01082375) and by MOTIE/KIAT (RS-2025-02633206).</p>
+    <p style="margin-top:14px;">Jeonbuk National University &middot; Center for Autonomous Intelligence and e-Mobility &middot; <a href="https://github.com/afaq005/VROSA">github.com/afaq005/VROSA</a></p>
+  </div>
+</footer>
+
+<script>
+// Gentle telemetry tick on the hero HUD — cosmetic, respects reduced motion
+(function(){
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const hx = document.getElementById('hx');
+  const hy = document.getElementById('hy');
+  const hh = document.getElementById('hh');
+  const fill = document.getElementById('distfill');
+  if(!hx) return;
+  let t = 0;
+  setInterval(()=>{
+    t += 0.15;
+    hx.textContent = (2.14 + Math.sin(t)*0.4).toFixed(2);
+    hy.textContent = (-0.83 + Math.cos(t*0.7)*0.3).toFixed(2);
+    hh.textContent = (24.3 + Math.sin(t*0.5)*6).toFixed(1);
+    fill.style.width = (30 + Math.sin(t*0.4)*15) + '%';
+  }, 700);
+})();
+</script>
+
+</body>
+</html>
