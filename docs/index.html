@@ -319,7 +319,35 @@ figcaption {
   font-size: 13px;
   color: var(--text-faint);
 }
+.field-media-grid {
+  align-items: start;
+}
 
+.field-media {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.field-media .field-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 6px;
+}
+
+.field-media-grid figure {
+  min-width: 0;
+}
+
+.field-media-grid figcaption {
+  min-height: 48px;
+  text-align: left;
+  line-height: 1.45;
+}
 .architecture-media {
   width: 100%;
   margin-top: 28px;
@@ -738,11 +766,63 @@ body.lightbox-open {
     <h2>Off the sim floor, onto a Korean university campus.</h2>
     <p>Physical trials ran on an AgileX Scout&nbsp;2.0 four-wheel skid-steer UGV with a Jetson AGX Orin 64GB running all perception and agent computation onboard; camera-only, no LiDAR. Twenty-four navigation trials spanned three outdoor sessions (midday sun and glare, evening, early morning), targets from 0.5&ndash;23.2&nbsp;m, cluttered e-bike/scooter zones, a Korean-text no-parking sign commanded in English, and a person who moved mid-navigation.</p>
 
-    <div class="media-grid">
-      <figure><div class="media"><img src="./static/images/field_envs.jpg" alt="Field environments" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="media-fallback"><span>FIELD ENVIRONMENTS</span><span class="fname">./static/images/field_envs.jpg</span></div></div><figcaption>Representative outdoor test scenes across all three sessions.</figcaption></figure>
-      <figure><div class="media"><img src="./static/images/distance_gen.jpg" alt="Distance generalization" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="media-fallback"><span>DISTANCE GENERALIZATION</span><span class="fname">./static/images/distance_gen.jpg</span></div></div><figcaption>Same scenario at increasing target distance (L1&ndash;L3).</figcaption></figure>
-      <figure><div class="media"><img src="./static/images/multiobj.jpg" alt="Multi-object scenes" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="media-fallback"><span>MULTI-OBJECT SCENES</span><span class="fname">./static/images/multiobj.jpg</span></div></div><figcaption>Disambiguation among multiple same-class objects.</figcaption></figure>
+<div class="media-grid field-media-grid">
+
+  <figure>
+    <div class="media field-media">
+      <img
+        src="./static/images/field_envs.jpg"
+        alt="Representative outdoor field environments"
+        class="field-image zoomable-image"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+      >
+      <div class="media-fallback">
+        <span>FIELD ENVIRONMENTS</span>
+        <span class="fname">./static/images/field_envs.jpg</span>
+      </div>
     </div>
+    <figcaption>
+      
+    </figcaption>
+  </figure>
+
+  <figure>
+    <div class="media field-media">
+      <img
+        src="./static/images/distance_gen.jpg"
+        alt="Distance generalization experiments"
+        class="field-image zoomable-image"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+      >
+      <div class="media-fallback">
+        <span>DISTANCE GENERALIZATION</span>
+        <span class="fname">./static/images/distance_gen.jpg</span>
+      </div>
+    </div>
+    <figcaption>
+      
+    </figcaption>
+  </figure>
+
+  <figure>
+    <div class="media field-media">
+      <img
+        src="./static/images/multiobj.jpg"
+        alt="Multi-object target disambiguation"
+        class="field-image zoomable-image"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+      >
+      <div class="media-fallback">
+        <span>MULTI-OBJECT SCENES</span>
+        <span class="fname">./static/images/multiobj.jpg</span>
+      </div>
+    </div>
+    <figcaption>
+     .
+    </figcaption>
+  </figure>
+
+</div>
 
     <h3>Session summary</h3>
     <div class="tblwrap">
@@ -922,14 +1002,15 @@ python3 vrosa_live.py
 
   <p class="lightbox-hint">Click outside the image or press Esc to close</p>
 </div>
-   <script>
-  const architectureImage = document.getElementById("architectureImage");
+<script>
+  const zoomableImages = document.querySelectorAll(".zoomable-image");
   const imageLightbox = document.getElementById("imageLightbox");
   const lightboxImage = document.getElementById("lightboxImage");
   const lightboxClose = document.getElementById("lightboxClose");
 
-  function openLightbox() {
-    lightboxImage.src = architectureImage.src;
+  function openLightbox(image) {
+    lightboxImage.src = image.src;
+    lightboxImage.alt = image.alt;
     imageLightbox.classList.add("open");
     imageLightbox.setAttribute("aria-hidden", "false");
     document.body.classList.add("lightbox-open");
@@ -938,10 +1019,16 @@ python3 vrosa_live.py
   function closeLightbox() {
     imageLightbox.classList.remove("open");
     imageLightbox.setAttribute("aria-hidden", "true");
+    lightboxImage.src = "";
     document.body.classList.remove("lightbox-open");
   }
 
-  architectureImage.addEventListener("click", openLightbox);
+  zoomableImages.forEach(function (image) {
+    image.addEventListener("click", function () {
+      openLightbox(image);
+    });
+  });
+
   lightboxClose.addEventListener("click", closeLightbox);
 
   imageLightbox.addEventListener("click", function (event) {
@@ -954,7 +1041,10 @@ python3 vrosa_live.py
   });
 
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape") {
+    if (
+      event.key === "Escape" &&
+      imageLightbox.classList.contains("open")
+    ) {
       closeLightbox();
     }
   });
