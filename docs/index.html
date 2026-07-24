@@ -451,7 +451,7 @@ footer a{color:var(--text-dim);}
 <section class="hero">
   <div class="wrap hero-center">
     <h1>VROSA: A Vision-Language Agentic Control Framework for Autonomous Mobile Robots</h1>
-    <p class="subtitle">Vision-Language Agentic Control for Autonomous Mobile Robots — a tool-constrained agent that turns plain-English commands into safe, closed-loop navigation, from simulation to outdoor hardware.</p>
+    <p class="subtitle">Vision-Language Agentic Control for Autonomous Mobile Robots: a tool-constrained agent that turns plain-English commands into safe, closed-loop navigation, from simulation to outdoor hardware.</p>
 
     <div class="authors">
       <b>Afaq Ahmed</b><sup>1*</sup>, <b>Hassan Eesaar</b><sup>1*</sup>, <b>Deok Jin Lee</b><sup>1&dagger;</sup>
@@ -525,7 +525,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VROSA</span></div>
     <h2>Abstract</h2>
-    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks — adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend — cloud, local, or remote — with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
+    <p>Mobile robots deployed in manufacturing, logistics, inspection, and service settings are largely confined to pre-programmed tasks; adapting behaviour to a new instruction usually means engineering time, reprogramming, and redeployment. <strong>VROSA</strong> is a vision-language agent framework, built on ROS&nbsp;2, that lets an operator issue natural language commands directly: an LLM planner selects from a constrained tool registry rather than generating raw motor commands, keeping semantic reasoning and physical execution separate for safety and auditability. The system pairs a hot-swappable vision-language model (VLM) backend (cloud, local, or remote) with a camera-first perception pipeline (YOLO + GroundingDINO + Depth&nbsp;Anything&nbsp;V2) that estimates object distance without requiring LiDAR. A closed-loop <strong>plan&ndash;execute&ndash;recheck</strong> navigation cycle alternates sparse VLM direction queries with dense, sensor-driven motion steps. Across 50 simulation trials and 24 outdoor hardware trials on a physical AgileX Scout&nbsp;2.0, VROSA reaches a 93.75% partial-credit navigation success rate with zero agent, tool, or perception code changed when porting from simulation to hardware.</p>
   </div>
 </section>
 
@@ -536,7 +536,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VROSA</span><span class="ts">00:00:01</span></div>
     <h2>Say what you want. Leave <em>how</em> to the robot.</h2>
-    <p>Every detection's distance is resolved without requiring a fixed sensor suite, and the same agent, tool, and perception code runs unmodified on both the simulated Nova Carter and the physical Scout&nbsp;2.0 — only the ROS&nbsp;2 topic constants change between platforms.</p>
+    <p>Every detection's distance is resolved without requiring a fixed sensor suite, and the same agent, tool, and perception code runs unmodified on both the simulated Nova Carter and the physical Scout&nbsp;2.0; only the ROS&nbsp;2 topic constants change between platforms.</p>
 
     <div class="stats">
       <div class="stat"><div class="num">93.75<small>%</small></div><div class="label">partial-credit navigation success rate, 24 outdoor hardware trials</div></div>
@@ -563,7 +563,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">NAV</span><span class="ts">plan_execute_recheck</span></div>
     <h2>One VLM call per leg. Every step in between is sensor-only.</h2>
-    <p><code>navigate_to_object</code> runs a plan&ndash;execute&ndash;recheck loop: a single VLM call ("scout") returns a coarse direction and distance; the robot then drives a portion of that estimated distance in small sensor-checked sub-steps — depth and, when available, LiDAR — with no further VLM calls until the leg completes or an obstacle intervenes. Real hardware trials average roughly one VLM query per metre travelled, not per motion step.</p>
+    <p><code>navigate_to_object</code> runs a plan&ndash;execute&ndash;recheck loop: a single VLM call ("scout") returns a coarse direction and distance; the robot then drives a portion of that estimated distance in small sensor-checked sub-steps depth and, when available, LiDAR: with no further VLM calls until the leg completes or an obstacle intervenes. Real hardware trials average roughly one VLM query per metre travelled, not per motion step.</p>
 
     <div class="navloop">
       <div class="navloop-track">
@@ -596,7 +596,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">HW</span><span class="ts">scout_2.0 &middot; jbnu_campus</span></div>
     <h2>Off the sim floor, onto a Korean university campus.</h2>
-    <p>Physical trials ran on an AgileX Scout&nbsp;2.0 four-wheel skid-steer UGV with a Jetson AGX Orin 64GB running all perception and agent computation onboard &mdash; camera-only, no LiDAR. Twenty-four navigation trials spanned three outdoor sessions (midday sun and glare, evening, early morning), targets from 0.5&ndash;23.2&nbsp;m, cluttered e-bike/scooter zones, a Korean-text no-parking sign commanded in English, and a person who moved mid-navigation.</p>
+    <p>Physical trials ran on an AgileX Scout&nbsp;2.0 four-wheel skid-steer UGV with a Jetson AGX Orin 64GB running all perception and agent computation onboard; camera-only, no LiDAR. Twenty-four navigation trials spanned three outdoor sessions (midday sun and glare, evening, early morning), targets from 0.5&ndash;23.2&nbsp;m, cluttered e-bike/scooter zones, a Korean-text no-parking sign commanded in English, and a person who moved mid-navigation.</p>
 
     <div class="media-grid">
       <figure><div class="media"><img src="./static/images/field_envs.jpg" alt="Field environments" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"><div class="media-fallback"><span>FIELD ENVIRONMENTS</span><span class="fname">./static/images/field_envs.jpg</span></div></div><figcaption>Representative outdoor test scenes across all three sessions.</figcaption></figure>
@@ -653,7 +653,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">VLM</span><span class="ts">backend_manager</span></div>
     <h2>Format compliance matters more than description quality.</h2>
-    <p>Three VLM backends were compared under identical fused-mode conditions (50 sim trials each). Claude Sonnet, LLaVA&nbsp;V5, and Phi-4 Base landed within a few points of each other on navigation success &mdash; the differences aren't statistically significant at this sample size. What <em>did</em> separate them was direction-query <strong>format compliance</strong>, which tracked completion time and attempt count far more tightly than raw success rate.</p>
+    <p>Three VLM backends were compared under identical fused-mode conditions (50 sim trials each). Claude Sonnet, LLaVA&nbsp;V5, and Phi-4 Base landed within a few points of each other on navigation success; the differences aren't statistically significant at this sample size. What <em>did</em> separate them was direction-query <strong>format compliance</strong>, which tracked completion time and attempt count far more tightly than raw success rate.</p>
 
     <div class="tblwrap">
     <table>
@@ -666,9 +666,9 @@ footer a{color:var(--text-dim);}
       </tbody>
     </table>
     </div>
-    <p>LLaVA V5's near-parity with the cloud backend, despite running fully offline, is the operationally relevant result — it makes runtime backend switching a genuine connectivity/cost trade-off rather than a pure performance one.</p>
+    <p>LLaVA V5's near-parity with the cloud backend, despite running fully offline, is the operationally relevant result; it makes runtime backend switching a genuine connectivity/cost trade-off rather than a pure performance one.</p>
 
-    <p>Human-rated scene-description quality tells a complementary story: Phi-4 and Claude Sonnet produced richer descriptions (mean 4.5 and 4.6 out of 5), while LLaVA&nbsp;V5 led on format compliance (4.8). This supports runtime VLM switching — a local fine-tuned model for structured navigation, a cloud model for rich scene interpretation.</p>
+    <p>Human-rated scene-description quality tells a complementary story: Phi-4 and Claude Sonnet produced richer descriptions (mean 4.5 and 4.6 out of 5), while LLaVA&nbsp;V5 led on format compliance (4.8). This supports runtime VLM switching; a local fine-tuned model for structured navigation, a cloud model for rich scene interpretation.</p>
     <figure class="paper-figure">
       <div class="media">
         <img src="./static/images/scene_description.png" alt="Scene-description quality scores across evaluation dimensions" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -720,7 +720,7 @@ footer a{color:var(--text-dim);}
   <div class="wrap">
     <div class="eyebrow"><span class="tag">ROS</span><span class="ts">get_started</span></div>
     <h2>Run it yourself</h2>
-    <p>Robot-agnostic by design — porting between the simulated Nova Carter and the physical Scout&nbsp;2.0 required changing only ROS&nbsp;2 topic constants, with zero changes to agent, tool, perception, or motion code.</p>
+    <p>Robot-agnostic by design: porting between the simulated Nova Carter and the physical Scout&nbsp;2.0 required changing only ROS&nbsp;2 topic constants, with zero changes to agent, tool, perception, or motion code.</p>
     <div class="terminal">
 git clone https://github.com/afaq005/VROSA.git
 cd VROSA &amp;&amp; pip install -r requirements.txt
