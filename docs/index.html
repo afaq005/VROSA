@@ -548,7 +548,32 @@ body.lightbox-open {
     right: 14px;
   }
 }
-   
+   .demo-video-container {
+  width: 100%;
+  margin-top: 24px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #000000;
+}
+
+.demo-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #000000;
+}
+
+.demo-video-caption {
+  max-width: none;
+  margin-top: 10px;
+  color: var(--text-faint);
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  text-align: center;
+}
 </style>
 </head>
 <body>
@@ -790,13 +815,24 @@ body.lightbox-open {
      ============================================================ -->
 <section id="video">
   <div class="wrap">
-    <div class="eyebrow"><span class="tag">DEMO</span><span class="ts">hardware_trials</span></div>
-    <h2>Watch it navigate</h2>
-    <div class="media" style="aspect-ratio:16/9;">
-      <span>DEMO REEL</span>
-      <span class="fname">./static/videos/nav_demo.mp4</span>
-      <span>hardware trials &middot; 360&deg; scans &middot; disambiguation among multiple e-bikes</span>
+    <div class="eyebrow">
+      <span class="tag">DEMO</span>
+      <span class="ts">hardware_trials</span>
     </div>
+
+    <h2>Watch it navigate</h2>
+
+    <div class="demo-video-container">
+      <video class="demo-video" controls preload="metadata" playsinline>
+        <source src="./static/videos/nav_demo.mp4" type="video/mp4">
+        Your browser does not support MP4 video.
+      </video>
+    </div>
+
+    <p class="demo-video-caption">
+      Hardware trials &middot; 360&deg; scans &middot;
+      disambiguation among multiple e-bikes
+    </p>
   </div>
 </section>
 
