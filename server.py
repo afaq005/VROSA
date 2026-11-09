@@ -17,14 +17,22 @@ import time
 import logging
 
 from flask import Flask, Response, request, jsonify, render_template_string
-
-from state import state, interrupt_flag
+import io
+from state import state, interrupt_flag, state_lock
 from logger import log, log_entries
 from vlm.manager import vlm_mgr
-from motion import _stop
+from motion import _stop, trigger_estop
 from stream import generate_stream
 from agent import agent, rosa_lock
-
+from response_guard import guard_unverified_arrival
+from config import (
+    ROBOT,
+    STOP_VELOCITY_EPS_MPS,
+    STOP_ANGULAR_EPS_RPS,
+)
+from experiment_logger import begin_trial, end_trial, timed, record_event
+from PIL import Image as PILImage
+from hud import _build_hud
 # ── Flask app ────────────────────────────────────────────────────
 app = Flask(__name__)
 
@@ -36,25 +44,91 @@ _werkzeug_log.setLevel(logging.ERROR)
 # ════════════════════════════════════════════════════════════
 # ROUTES
 # ════════════════════════════════════════════════════════════
+
 @app.route("/stream")
 def stream():
-    return Response(generate_stream(),
-                    mimetype="multipart/x-mixed-replace; boundary=frame")
+    response = Response(
+        generate_stream(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
 
+    # Prevent browser/proxy caching of the MJPEG stream.
+    response.headers["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, "
+        "post-check=0, pre-check=0, max-age=0"
+    )
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["X-Accel-Buffering"] = "no"
 
+    return response
+@app.route("/frame.jpg")
+def frame_jpg():
+    """
+    Return one fresh camera frame.
+
+    The dashboard repeatedly requests this endpoint instead of holding
+    a long-lived MJPEG connection. This avoids buffering/freezing on
+    remote browsers and proxies.
+    """
+    with state_lock:
+        src = state.get("image_raw")
+        seq = int(state.get("image_seq", 0))
+
+        if src is None:
+            return Response("Camera not ready", status=503)
+
+        # Always work on a copy. Never draw onto perception input.
+        frame = src.copy()
+
+    try:
+        # Build the HUD from CURRENT robot state.
+        frame = _build_hud(frame)
+    except Exception as exc:
+        log(f"HUD frame error: {exc}", "WARN")
+
+    # Dashboard resolution.
+    # BILINEAR is intentionally used instead of LANCZOS to reduce CPU load.
+    frame = frame.resize(
+        (960, 600),
+        PILImage.Resampling.BILINEAR,
+    )
+
+    buf = io.BytesIO()
+    frame.save(
+        buf,
+        format="JPEG",
+        quality=75,
+        optimize=False,
+    )
+
+    response = Response(
+        buf.getvalue(),
+        mimetype="image/jpeg",
+    )
+
+    # Absolutely prevent browser/proxy caching.
+    response.headers["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, "
+        "post-check=0, pre-check=0, max-age=0"
+    )
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+    # Very useful diagnostic:
+    response.headers["X-VROSA-Image-Seq"] = str(seq)
+
+    return response
 @app.route("/stop", methods=["POST", "GET"])
 def emergency_stop():
-    interrupt_flag.set()
-    _stop()
-    state["status"] = "idle"
+    # Do not release rosa_lock here: the currently executing agent owns it and
+    # must exit through its own finally block. Releasing from this request can
+    # allow two agent tasks to overlap.
+    trigger_estop("dashboard_stop")
+    state["status"] = "stopping" if rosa_lock.locked() else "idle"
     state["target"] = ""
-    # Release lock immediately so next command doesn't wait
-    try:
-        rosa_lock.release()
-    except RuntimeError:
-        pass   # wasn't held, fine
-    log("⚡ EMERGENCY STOP — lock released", "WARN")
-    return jsonify({"response": "⚡ Robot stopped immediately."})
+    log("⚡ EMERGENCY STOP", "WARN")
+    return jsonify({"response": "⚡ Emergency stop triggered. Current task is terminating."})
 # def emergency_stop():
 #     interrupt_flag.set()
 #     _stop()
@@ -62,6 +136,35 @@ def emergency_stop():
 #     state["target"] = ""
 #     log("⚡ EMERGENCY STOP", "WARN")
 #     return jsonify({"response": "⚡ Robot stopped immediately."})
+
+
+@app.route("/hardware/reset-estop", methods=["POST"])
+def hardware_reset_estop():
+    if ROBOT.get("platform_label") != "Hardware":
+        return jsonify({"error": "Scout hardware only"}), 400
+    # Local-only Flask binding is mandatory for physical robot dashboard.
+    if ROBOT.get("hardware_mode") != "guarded":
+        return jsonify({"error": "Reset requires guarded hardware mode"}), 409
+    if rosa_lock.locked() or state.get("motion_active"):
+        return jsonify({"error": "Robot task still active"}), 409
+    payload = request.get_json(silent=True) or {}
+    if payload.get("ack") != "RESET_SOFTWARE_ESTOP":
+        return jsonify({"error": "Explicit RESET_SOFTWARE_ESTOP acknowledgement required"}), 400
+    # Check inputs without clearing the latch: one dedicated validator may
+    # verify all sensor freshness conditions while intentionally latched.
+    from safety import check_obstacle
+    now = time.monotonic()
+    odom_ts = state.get("odom_ts")
+    camera_ts = state.get("image_ts")
+    if (odom_ts is None or camera_ts is None or
+            now - float(odom_ts) > ROBOT.get("odom_max_age_s", .30) or
+            now - float(camera_ts) > 1.0 or not check_obstacle(1).valid):
+        return jsonify({"error": "Fresh camera, odometry and physical safety sensing required"}), 409
+    interrupt_flag.clear()
+    state["estop_source"] = ""
+    state["estop_trigger_ts"] = None
+    record_event("HARDWARE_SOFTWARE_ESTOP_RESET", acknowledged=True)
+    return jsonify({"result": "Software latch reset; independently verify hardware E-stop and operator supervision"})
 
 
 @app.route("/vlm/switch", methods=["POST"])
@@ -108,40 +211,166 @@ def command():
     if not text:
         return jsonify({"error": "no text"}), 400
 
-    # Hard stop words bypass ROSA entirely
-    STOP_WORDS = {"stop", "halt", "cancel", "abort", "freeze", "wait", "pause", "enough"}
-    if any(w in text.lower() for w in STOP_WORDS):
-        interrupt_flag.set()
-        _stop()
-        state["status"] = "idle"
+    # Exact command matching prevents targets such as "stop sign" from being
+    # misclassified as an emergency-stop request.
+    normalized = " ".join(text.lower().split())
+    STOP_COMMANDS = {"stop", "halt", "cancel", "abort", "freeze", "pause", "emergency stop"}
+    if normalized in STOP_COMMANDS:
+        trigger_estop("text_stop_command")
+        state["status"] = "stopping"
         state["target"] = ""
         log("⚡ INTERRUPT received", "WARN")
-        return jsonify({"response": "Stopped. Robot halted immediately."})
-
-    # If agent is busy, interrupt and wait
+        return jsonify({"response": "Stopped. Robot emergency stop triggered."})
     _lock_acquired = rosa_lock.acquire(blocking=False)
 
     if not _lock_acquired:
-        log(f"Interrupting current task for: {text}", "WARN")
-        interrupt_flag.set()
-        _stop()
-        time.sleep(0.5)
 
-        _lock_acquired = rosa_lock.acquire(blocking=True, timeout=5)
+        physically_moving = (
+            state.get(
+                "motion_active",
+                False,
+            )
+            or abs(
+                float(
+                    state.get(
+                        "linear_velocity",
+                        0.0,
+                    )
+                )
+            ) > STOP_VELOCITY_EPS_MPS
+            or abs(
+                float(
+                    state.get(
+                        "angular_velocity",
+                        0.0,
+                    )
+                )
+            ) > STOP_ANGULAR_EPS_RPS
+        )
+
+        if physically_moving:
+
+            log(
+                f"Preempting active robot motion for: {text}",
+                "WARN",
+            )
+
+            trigger_estop(
+                "command_preemption"
+            )
+
+        else:
+
+            log(
+                (
+                    "Interrupting active agent task "
+                    "while robot is stationary"
+                ),
+                "WARN",
+            )
+
+            interrupt_flag.set()
+
+        _lock_acquired = rosa_lock.acquire(
+            blocking=True,
+            timeout=5,
+        )
+
         if not _lock_acquired:
-            state["status"] = "idle"
-            return jsonify({"error": "Agent busy — previous command did not finish cleanly"}), 503
-    interrupt_flag.clear()
+
+            state["status"] = "stopping"
+
+            return jsonify({
+                "error":
+                    "Agent busy — previous command "
+                    "is still terminating"
+            }), 503
+    # If agent is busy, interrupt and wait
+    # _lock_acquired = rosa_lock.acquire(blocking=False)
+
+    # if not _lock_acquired:
+    #     log(f"Interrupting current task for: {text}", "WARN")
+    #     trigger_estop("command_preemption")
+    #     _lock_acquired = rosa_lock.acquire(blocking=True, timeout=5)
+    #     if not _lock_acquired:
+    #         state["status"] = "stopping"
+    #         return jsonify({"error": "Agent busy — previous command is still terminating"}), 503
+
+    # Hardware E-stop is latched until an explicit local reset, never silently
+    # cleared by an unrelated incoming command or VLM answer.
+    if ROBOT.get("platform_label") == "Hardware" and interrupt_flag.is_set():
+        rosa_lock.release()
+        return jsonify({"error": "Hardware software E-stop latched; reset explicitly when safe"}), 409
+    if ROBOT.get("platform_label") != "Hardware":
+        interrupt_flag.clear()
+        state["estop_source"] = ""
+        state["estop_trigger_ts"] = None
+
+    trial_id = request.form.get("trial_id", "").strip() or None
+    scenario_id = request.form.get("scenario_id", "").strip() or None
+    method = request.form.get("method", "").strip() or None
+    target_name = request.form.get("target", "").strip()
+    command_language = request.form.get("command_language", "").strip()
+    paraphrase_id = request.form.get("paraphrase_id", "").strip()
+    heldout_category = request.form.get("heldout_category", "").strip()
+
+    def _optional_float(name):
+        raw = request.form.get(name, "").strip()
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    target_x = _optional_float("target_x")
+    target_y = _optional_float("target_y")
+    trial_id = begin_trial(
+        text, target=target_name, trial_id=trial_id, scenario_id=scenario_id, method=method,
+        command_language=command_language, paraphrase_id=paraphrase_id,
+        heldout_category=heldout_category, target_x=target_x, target_y=target_y,
+    )
     log(f'Command: "{text}" [{vlm_mgr.active_name}]', "VROSA")
     try:
         state["status"] = "processing"
-        response = agent.invoke(text)
-        return jsonify({"response": response})
+        with timed("command_end_to_end", command=text[:160]):
+            response = agent.invoke(text)
+        # A conversational answer cannot independently establish robot arrival.
+        # begin_trial clears last_nav_outcome for every new user command, so an
+        # old successful navigation is never re-used as evidence for a new one.
+        response, unsupported_arrival = guard_unverified_arrival(
+            response,
+            nav_outcome=state.get("last_nav_outcome", ""),
+            identity_confirmed=bool((state.get("last_visual_target_memory") or {}).get("identity_confirmed")),
+        )
+        if unsupported_arrival:
+            record_event("UNVERIFIED_ARRIVAL_CLAIM_BLOCKED",
+                         nav_outcome=state.get("last_nav_outcome", ""),
+                         command=text[:160])
+        # GT must use the independently supplied simulation pose, NOT robot
+        # wheel odometry. Target coordinates come from the frozen scene setup.
+        gt_final, gt_source = None, ""
+        gt_ts = state.get("gt_robot_ts")
+        if (target_x is not None and target_y is not None and gt_ts is not None
+                and (time.monotonic() - float(gt_ts)) <= 0.5
+                and state.get("gt_robot_source")):
+            gt_final = ((float(state["gt_robot_x"]) - target_x) ** 2
+                        + (float(state["gt_robot_y"]) - target_y) ** 2) ** 0.5
+            gt_source = "independent_sim_pose"
+        elif target_x is not None and target_y is not None:
+            record_event("GT_UNAVAILABLE", reason="no_fresh_independent_sim_pose",
+                         target_x=target_x, target_y=target_y)
+        end_trial(
+            outcome=("UNVERIFIED_ARRIVAL_CLAIM" if unsupported_arrival
+                     else state.get("last_nav_outcome", "") or "COMPLETED"),
+            ground_truth_final_distance_m=gt_final, ground_truth_source=gt_source,
+        )
+        return jsonify({"response": response, "trial_id": trial_id, "ground_truth_final_distance_m": gt_final})
     except Exception as e:
+        record_event("COMMAND_ERROR", error=str(e))
+        end_trial(outcome="ERROR", failure_reason=str(e))
         return jsonify({"error": str(e)}), 500
     finally:
         state["status"] = "idle"
-        time.sleep(0.05)   # tiny settle so chain fully exits before lock release
+        time.sleep(0.05)
         if _lock_acquired:
             try:
                 rosa_lock.release()
@@ -153,20 +382,142 @@ def command():
     #         rosa_lock.release()
     #     # rosa_lock.release()
 
-
 @app.route("/status")
 def status():
     lidar = state["lidar"]
+
+    image_ts = state.get("image_ts")
+    image_age_ms = None
+
+    if image_ts is not None:
+        image_age_ms = round(
+            (time.monotonic() - image_ts) * 1000.0,
+            1,
+        )
+    lidar_ts = state.get("lidar_ts")
+    depth_ts = state.get("depth_ts")
+
+    lidar_age_ms = (
+        round(
+            (
+                time.monotonic()
+                - float(lidar_ts)
+            ) * 1000.0,
+            1,
+        )
+        if lidar_ts is not None
+        else None
+    )
+
+    depth_age_ms = (
+        round(
+            (
+                time.monotonic()
+                - float(depth_ts)
+            ) * 1000.0,
+            1,
+        )
+        if depth_ts is not None
+        else None
+    )
     return jsonify({
-        "x":             round(state["x"], 3),
-        "y":             round(state["y"], 3),
-        "heading":       round(state["yaw"], 1),
-        "lidar_closest": round(lidar[0]["dist"], 2) if lidar else None,
-        "camera":        state["image_raw"] is not None,
-        "status":        state["status"],
-        "last_vlm":      state["last_vlm"][:100],
-        "target":        state["target"],
-        "vlm_backend":   vlm_mgr.active_name,
+        "x": round(state["x"], 3),
+        "y": round(state["y"], 3),
+        "heading": round(state["yaw"], 1),
+
+        "lidar_closest": (
+            round(
+                float(
+                    state.get(
+                        "lidar_nearest_min",
+                        lidar[0]["dist"] if lidar else 99.0,
+                    )
+                ),
+                2,
+            )
+            if state.get("has_lidar")
+            else None
+        ),
+
+        "camera": (state.get("image_raw") is not None and state.get("image_ts") is not None
+                   and time.monotonic() - float(state["image_ts"]) <= 1.0),
+
+        # Camera diagnostics
+        "image_seq": int(state.get("image_seq", 0)),
+        "image_age_ms": image_age_ms,
+        "camera_hz": (
+            round(float(state["image_hz_ema"]), 2)
+            if state.get("image_hz_ema") is not None
+            else None
+        ),
+        "image_rx_seq": int(
+            state.get("image_rx_seq", 0)
+        ),
+
+        "image_seq": int(
+            state.get("image_seq", 0)
+        ),
+
+        "image_conversion_errors": int(
+            state.get(
+                "image_conversion_errors",
+                0,
+            )
+        ),
+        "status": state["status"],
+        "last_vlm": state["last_vlm"][:100],
+        "target": state["target"],
+        "vlm_backend": vlm_mgr.active_name,
+        "lidar_age_ms": lidar_age_ms,
+        "depth_age_ms": depth_age_ms,
+        "hardware_mode": ROBOT.get("hardware_mode"),
+        "hardware_motion_denial": state.get("hardware_motion_denial"),
+        "range_depth_age_ms": (round((time.monotonic() - state["range_depth_ts"]) * 1000, 1)
+                               if state.get("range_depth_ts") is not None else None),
+        "use_range_depth": state.get("use_range_depth", False),
+
+        "lidar_hz": (
+            round(
+                float(
+                    state["lidar_hz_ema"]
+                ),
+                2,
+            )
+            if state.get(
+                "lidar_hz_ema"
+            ) is not None
+            else None
+        ),
+
+        "odom_hz": (
+            round(
+                float(
+                    state["odom_hz_ema"]
+                ),
+                2,
+            )
+            if state.get(
+                "odom_hz_ema"
+            ) is not None
+            else None
+        ),
+
+        "depth_inference_ms": (
+            round(
+                float(
+                    state["depth_inference_ms"]
+                ),
+                1,
+            )
+            if state.get(
+                "depth_inference_ms"
+            ) is not None
+            else None
+        ),
+
+        "depth_source_image_seq": state.get(
+            "depth_source_image_seq"
+        ),
     })
 
 
@@ -253,26 +604,51 @@ def yolo_switch():
 @app.route("/perc/config", methods=["GET"])
 def perc_config_get():
     return jsonify({
-        "use_lidar":  state.get("use_lidar",  True),
-        "use_depth":  state.get("use_depth",  True),
-        "use_yolo":   state.get("use_yolo",   True),
-        "use_gdino":  state.get("use_gdino",  True),
-        "has_lidar":  state.get("has_lidar",  False),
-        "perc_ready": state.get("perc_ready", False),
+        "use_range_depth": state.get("use_range_depth", False),
+        "hardware_mode": ROBOT.get("hardware_mode"),
+        "range_depth_age_ms": (round((time.monotonic() - state["range_depth_ts"]) * 1000, 1)
+                               if state.get("range_depth_ts") is not None else None),
+        "use_lidar": state.get(
+            "use_lidar",
+            ROBOT["has_lidar"],
+        ),
+        "use_depth": state.get(
+            "use_depth",
+            False,
+        ),
+        "use_yolo": state.get(
+            "use_yolo",
+            True,
+        ),
+        "use_gdino": state.get(
+            "use_gdino",
+            False,
+        ),
+        "has_lidar": state.get(
+            "has_lidar",
+            False,
+        ),
+        "perc_ready": state.get(
+            "perc_ready",
+            False,
+        ),
     })
 
 @app.route("/perc/config", methods=["POST"])
 def perc_config_set():
     data = request.get_json(silent=True) or {}
     changed = []
-    for key in ("use_lidar", "use_depth", "use_yolo", "use_gdino"):
+    for key in ("use_lidar", "use_range_depth", "use_depth", "use_yolo", "use_gdino"):
         if key in data:
-            state[key] = bool(data[key])
+            if not isinstance(data[key], bool):
+                return jsonify({"error": f"{key} must be a JSON boolean"}), 400
+            state[key] = data[key]
             changed.append(f"{key}={'ON' if state[key] else 'OFF'}")
     if changed:
         log(f"Perc config: {', '.join(changed)}", "PERC")
     return jsonify({
         "use_lidar":  state["use_lidar"],
+        "use_range_depth": state["use_range_depth"],
         "use_depth":  state["use_depth"],
         "use_yolo":   state["use_yolo"],
         "use_gdino":  state["use_gdino"],
@@ -556,8 +932,8 @@ DASHBOARD = """
   </div>
   <div style="width:1px; height:28px; background:#E2D9CC; margin-right:12px;"></div>
   <h1 style="font-size:18px;">V-ROSA</h1>
-  <span class="badge">Nova Carter</span>
-  <span class="badge">Isaac Sim</span>
+  <span class="badge">{{ robot_name }}</span>
+  <span class="badge">{{ platform_label }}</span>
   <span class="badge" id="top-status">idle</span>
   <span class="badge" id="top-vlm-badge">VLM: API</span>
   <button id="det-top-btn" class="det-toggle-btn" onclick="toggleDetections()"
@@ -570,7 +946,7 @@ DASHBOARD = """
 
 <div class="main">
   <div class="stream-panel">
-    <img id="feed" src="/stream" alt="Live Camera">
+    <img id="feed" src="/frame.jpg" alt="Live Camera">
 
     <!-- Map + Quick Commands side by side -->
     <div style="display:flex; gap:10px; min-height:0;">
@@ -735,22 +1111,26 @@ DASHBOARD = """
           <span>📡 LiDAR</span>
           <span class="pt-dot"></span>
         </div>
+        <div class="perc-toggle on" id="pt-range-depth" onclick="togglePerc('use_range_depth')">
+          <span>📏 Physical range depth (Scout)</span>
+          <span class="pt-dot"></span>
+        </div>
         <div class="perc-toggle on" id="pt-depth" onclick="togglePerc('use_depth')">
           <span>🌊 Depth (DA-V2)</span>
           <span class="pt-dot"></span>
         </div>
         <div class="perc-toggle on" id="pt-yolo" onclick="togglePerc('use_yolo')">
-          <span>⚡ YOLO26</span>
+          <span>⚡ YOLO</span>
           <span class="pt-dot"></span>
         </div>
-        <div class="perc-toggle on" id="pt-gdino" onclick="togglePerc('use_gdino')">
+        <div class="perc-toggle off" id="pt-gdino" onclick="togglePerc('use_gdino')">
           <span>🔍 GroundingDINO</span>
           <span class="pt-dot"></span>
         </div>
       </div>
       <div class="perc-hint">
-        Distance priority: <span>LiDAR</span> → <span>Depth</span> → <span>Detections</span><br>
-        Turn off sources to reduce compute. LiDAR always most accurate.
+        Safety sensing uses fresh LiDAR/depth. Object-level distance uses calibrated depth<br>
+        unless camera↔LiDAR projection has been explicitly validated.
       </div>
     </div>
 
@@ -760,14 +1140,14 @@ DASHBOARD = """
       <div class="yolo-select-wrap">
         <select class="yolo-select" id="yolo-select" onchange="switchYOLO(this.value)">
           <optgroup label="── YOLO26 (Latest 2025, NMS-free) ──">
-            <option value="yolo26n" selected>YOLO26 Nano   — fastest, edge-optimised</option>
+            <option value="yolo26n">YOLO26 Nano   — fastest, edge-optimised</option>
             <option value="yolo26s">YOLO26 Small  — fast,    small-object aware</option>
             <option value="yolo26m">YOLO26 Medium — balanced</option>
             <option value="yolo26l">YOLO26 Large  — accurate</option>
             <option value="yolo26x">YOLO26 XLarge — best accuracy</option>
           </optgroup>
           <optgroup label="── YOLO11 (2024) ──">
-            <option value="yolo11n">YOLO11 Nano   — fastest,   ~5MB</option>
+            <option value="yolo11n" selected>YOLO11 Nano   — fastest,   ~5MB</option>
             <option value="yolo11s">YOLO11 Small  — fast,     ~19MB</option>
             <option value="yolo11m">YOLO11 Medium — balanced, ~39MB</option>
             <option value="yolo11l">YOLO11 Large  — accurate, ~49MB</option>
@@ -880,8 +1260,8 @@ async function updateVLMModelStatus() {
 }
 
 
-const _percState = {use_lidar:true, use_depth:true, use_yolo:true, use_gdino:true};
-const _percIds   = {use_lidar:'pt-lidar', use_depth:'pt-depth',
+const _percState = {use_lidar:true, use_range_depth:false, use_depth:true, use_yolo:true, use_gdino:false};
+const _percIds   = {use_lidar:'pt-lidar', use_range_depth:'pt-range-depth', use_depth:'pt-depth',
                     use_yolo:'pt-yolo',   use_gdino:'pt-gdino'};
 
 function _syncPercUI() {
@@ -897,11 +1277,12 @@ async function togglePerc(key) {
   _percState[key] = !_percState[key];
   _syncPercUI();
   try {
-    await fetch('/perc/config', {
+    const resp = await fetch('/perc/config', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({[key]: _percState[key]})
     });
+    if (!resp.ok) throw new Error('perception toggle rejected');
   } catch(e) {
     // Revert on failure
     _percState[key] = !_percState[key];
@@ -913,7 +1294,7 @@ async function updatePercConfig() {
   try {
     const r = await fetch('/perc/config');
     const d = await r.json();
-    for (const key of ['use_lidar','use_depth','use_yolo','use_gdino']) {
+    for (const key of ['use_lidar','use_range_depth','use_depth','use_yolo','use_gdino']) {
       if (key in d) _percState[key] = d[key];
     }
     // Dim LiDAR toggle if hardware not present
@@ -1568,7 +1949,60 @@ async function updateRviz() {
   } catch {}
 }
 
+// ════════════════════════════════════════════════════════════
+// CAMERA REFRESH
+// ════════════════════════════════════════════════════════════
+//
+// A new HTTP JPEG is requested for every frame instead of using
+// a persistent MJPEG connection. This avoids remote buffering
+// and browser/proxy stream freezing.
 
+let _cameraObjectUrl = null;
+let _cameraRefreshRunning = false;
+
+async function refreshCamera() {
+  if (_cameraRefreshRunning) return;
+  _cameraRefreshRunning = true;
+
+  try {
+    const response = await fetch(
+      '/frame.jpg?t=' + Date.now(),
+      {
+        method: 'GET',
+        cache: 'no-store'
+      }
+    );
+
+    if (response.ok) {
+      const blob = await response.blob();
+      const newUrl = URL.createObjectURL(blob);
+
+      const img = document.getElementById('feed');
+
+      if (img) {
+        const oldUrl = _cameraObjectUrl;
+
+        img.onload = () => {
+          if (oldUrl) {
+            URL.revokeObjectURL(oldUrl);
+          }
+        };
+
+        img.src = newUrl;
+        _cameraObjectUrl = newUrl;
+      }
+    }
+
+  } catch (e) {
+    console.debug('Camera refresh:', e);
+  }
+
+  _cameraRefreshRunning = false;
+
+  // ~5 FPS dashboard stream.
+  // ROS/perception still receive the original camera rate.
+  setTimeout(refreshCamera, 200);
+}
 setInterval(updateDetections, 700);
 setInterval(updateRviz, 100);
 setInterval(updatePercConfig, 3000);
@@ -1577,7 +2011,7 @@ setInterval(updateYOLOStatus, 4000);
 setInterval(updateStatus, 800);
 setInterval(updateLog, 1000);
 setInterval(updateVLMInfo, 3000);
-updateStatus(); updateLog(); updateVLMInfo(); updateDetections(); updateYOLOStatus(); updateVLMModelStatus(); updatePercConfig(); rvizInit(); updateRviz();
+updateStatus(); updateLog(); updateVLMInfo(); updateDetections(); updateYOLOStatus(); updateVLMModelStatus(); updatePercConfig(); rvizInit(); updateRviz(); refreshCamera();
 </script>
 </body>
 </html>
@@ -1587,4 +2021,4 @@ updateStatus(); updateLog(); updateVLMInfo(); updateDetections(); updateYOLOStat
 @app.route("/view")
 @app.route("/")
 def dashboard():
-    return render_template_string(DASHBOARD)
+    return render_template_string(DASHBOARD, robot_name=ROBOT["display_name"], platform_label=ROBOT["platform_label"])

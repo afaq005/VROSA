@@ -63,7 +63,10 @@ def _build_hud(img: PILImage.Image) -> PILImage.Image:
     # ════════════════════════════════════════════════════════
     draw.rectangle([0, 0, W, 44], fill=(0, 0, 0))
     n_dets        = len(detections)
-    perc_mode     = "LiDAR+Depth" if state.get("has_lidar") else "Depth-only"
+    perc_mode     = (
+        "LiDAR + DA-V2(on-demand)" if state.get("has_lidar")
+        else "Depth-only"
+    )
     draw.text(
         (12, 12),
         f"V-ROSA  |  x={state['x']:.2f}m  y={state['y']:.2f}m  "
@@ -78,7 +81,7 @@ def _build_hud(img: PILImage.Image) -> PILImage.Image:
     # ════════════════════════════════════════════════════════
     lidar = state["lidar"]
     if lidar:
-        near      = lidar[0]["dist"]
+        near      = float(state.get("lidar_nearest_min", lidar[0]["dist"]))
         src_label = "LiDAR"
     elif detections:
         visible = [d["dist"] for d in detections if d["dist"] < 90]

@@ -1,11 +1,14 @@
 """
-perception.py — YOLO26 + Depth Anything V2 + GroundingDINO perception pipeline.
+perception.py — YOLO + Depth Anything V2 + GroundingDINO perception pipeline.
 
-TWO DECOUPLED LOOPS for max speed:
-  Fast loop  (~15 fps, GPU): YOLO26 + DA-V2  → real-time bbox + depth
-  Slow loop  (~1  fps, CPU): GroundingDINO    → semantic labels for known objects
+RUNTIME PERCEPTION SCHEDULING:
+  YOLO: continuous best-effort GPU object detection.
+  DA-V2: on-demand while the robot is stationary on LiDAR-equipped platforms;
+         continuous only on camera-only platforms that require it for safety.
+  GroundingDINO: optional slow CPU semantic detector.
 
-Both write to state["detections"] with deduplication (IoU merge).
+YOLO and DA-V2 share one GPU inference lock so they never contend on CUDA.
+Detection sources write to state["detections"] with deduplication (IoU merge).
 GroundingDINO lives on CPU to preserve VRAM alongside Isaac Sim.
 
 YOLO model hot-swappable at runtime via /yolo/switch endpoint.
@@ -18,10 +21,16 @@ import threading
 import numpy as np
 from PIL import Image as PILImage
 
-from state import state
+from state import state, state_lock
 from logger import log
-
+from config import (
+    ROBOT,
+    PERCEPTION_CONFIG,
+    MAX_SENSOR_AGE_S,
+)
+_DEFAULT_YOLO = ROBOT["yolo_model"]
 import warnings
+from experiment_logger import timed, record_event
 warnings.filterwarnings("ignore", message=".*pipelines sequentially.*")
 # ════════════════════════════════════════════════════════════
 # AVAILABLE YOLO MODELS
@@ -44,7 +53,7 @@ YOLO_MODELS = {
     "yolov8s": {"file": "yolov8s.pt", "desc": "YOLOv8 Small  — fast"},
     "yolov8m": {"file": "yolov8m.pt", "desc": "YOLOv8 Medium — balanced"},
 }
-_DEFAULT_YOLO = "yolo26n"
+# _DEFAULT_YOLO = "yolo26n"
 
 
 # ════════════════════════════════════════════════════════════
@@ -65,45 +74,143 @@ _device       = "cpu"
 _yolo_dets    = []    # updated by fast loop
 _gdino_dets   = []    # updated by slow loop
 _dets_lock    = threading.Lock()
-
+_gpu_inference_lock = threading.Lock()
+_depth_priority = threading.Event()
+_yolo_frame_cache_lock = threading.Lock()
+_yolo_frame_cache = {}
+_YOLO_FRAME_CACHE_SIZE = 3
 
 # ════════════════════════════════════════════════════════════
 # SHARED GEOMETRY HELPERS
 # ════════════════════════════════════════════════════════════
-def _dist_from_bbox(depth_map, bbox: list, pct: int = None) -> float:
-    """Robust metric distance from depth map inside a bounding box.
+def _calibrate_target_distance(raw_m: float) -> tuple[float, bool]:
+    """Apply configured short-range object-distance calibration when enabled.
 
-    Uses a centre-crop (inner 60%) of the bbox to avoid noisy depth at edges.
-    Adaptive percentile:
-      < 2 m  → 10th pct  (grab nearest surface, very close)
-      2–5 m  → 25th pct  (stable but still near-biased)
-      > 5 m  → 45th pct  (median-ish — far-range depth is less certain)
+    Formal experiments must use coefficients fitted without GT-assisted ROI
+    selection; disabling calibration returns the raw metric-model estimate.
     """
+    raw_m = float(raw_m)
+
+    if not ROBOT.get("target_depth_calibration_enabled", False):
+        return raw_m, False
+
+    raw_max = float(
+        ROBOT.get(
+            "target_depth_cal_raw_max_m",
+            0.0,
+        )
+    )
+
+    # Do not extrapolate the short-range fit into far-range navigation.
+    if raw_max > 0.0 and raw_m > raw_max:
+        return raw_m, False
+
+    a = float(
+        ROBOT.get(
+            "target_depth_cal_scale",
+            1.0,
+        )
+    )
+
+    b = float(
+        ROBOT.get(
+            "target_depth_cal_bias",
+            0.0,
+        )
+    )
+
+    calibrated = (
+        a * raw_m
+        + b
+    )
+
+    return max(0.0, calibrated), True
+
+def depth_stats_from_bbox(depth_map, bbox: list, pct: int = None) -> dict:
+    """Return distance plus validity metadata for a bbox centre crop."""
     if depth_map is None:
-        return 99.0
+        return {"distance": 99.0, "valid_pixel_count": 0, "valid_pixel_ratio": 0.0, "percentile": pct}
     x1, y1, x2, y2 = [int(v) for v in bbox]
     H, W = depth_map.shape
-
-    # Centre-crop: inner 60% of bbox width/height — avoids depth bleeding at edges
     mx, my = (x1 + x2) // 2, (y1 + y2) // 2
-    hw = max(4, int((x2 - x1) * 0.30))   # 30% half-width
-    hh = max(4, int((y2 - y1) * 0.30))   # 30% half-height
+    half_frac = float(PERCEPTION_CONFIG["depth_bbox_inner_fraction"]) / 2.0
+    hw = max(4, int((x2 - x1) * half_frac))
+    hh = max(4, int((y2 - y1) * half_frac))
     cx1, cy1 = max(0, mx - hw), max(0, my - hh)
     cx2, cy2 = min(W, mx + hw), min(H, my + hh)
-
     patch = depth_map[cy1:cy2, cx1:cx2]
-    valid = patch[patch > 0.1]
-    if len(valid) == 0:
-        return 99.0
+    if patch.size == 0:
+        return {"distance": 99.0, "valid_pixel_count": 0, "valid_pixel_ratio": 0.0, "percentile": pct}
+    valid = patch[np.isfinite(patch) & (patch >= ROBOT["depth_min_m"]) & (patch <= ROBOT["depth_max_m"])]
+    ratio = float(valid.size / patch.size)
+    if valid.size == 0:
+        return {"distance": 99.0, "valid_pixel_count": 0, "valid_pixel_ratio": ratio, "percentile": pct}
+    rough_raw = float(
+        np.median(valid)
+    )
 
-    # Adaptive percentile
-    rough = float(np.median(valid))
+    rough_for_band, rough_calibrated = (
+        _calibrate_target_distance(
+            rough_raw
+        )
+    )
+
     if pct is None:
-        if   rough < 2.0: pct = 10
-        elif rough < 5.0: pct = 25
-        else:             pct = 45
 
-    return float(np.percentile(valid, pct))
+        if (
+            rough_for_band
+            < PERCEPTION_CONFIG[
+                "depth_near_threshold_m"
+            ]
+        ):
+            pct = PERCEPTION_CONFIG[
+                "depth_percentile_near"
+            ]
+
+        elif (
+            rough_for_band
+            < PERCEPTION_CONFIG[
+                "depth_mid_threshold_m"
+            ]
+        ):
+            pct = PERCEPTION_CONFIG[
+                "depth_percentile_mid"
+            ]
+
+        else:
+            pct = PERCEPTION_CONFIG[
+                "depth_percentile_far"
+            ]
+
+
+    raw_distance = float(
+        np.percentile(
+            valid,
+            pct,
+        )
+    )
+
+    distance, calibrated = (
+        _calibrate_target_distance(
+            raw_distance
+        )
+    )
+
+
+    return {
+        "distance": distance,
+        "raw_distance": raw_distance,
+        "calibrated": calibrated,
+        "valid_pixel_count": int(valid.size),
+        "valid_pixel_ratio": ratio,
+        "percentile": int(pct),
+        "rough_median": rough_for_band,
+        "rough_raw_median": rough_raw,
+    }
+
+
+def _dist_from_bbox(depth_map, bbox: list, pct: int = None) -> float:
+    return float(depth_stats_from_bbox(depth_map, bbox, pct)["distance"])
 
 
 def _sector(cx: int, W: int) -> str:
@@ -134,19 +241,12 @@ def _merge_dets(primary: list, secondary: list) -> list:
 
 
 def _lidar_dist_for_bbox(bbox: list, img_w: int) -> float | None:
-    """
-    Project a pixel bbox into LiDAR space and return the closest point.
+    """Legacy angular bbox→LiDAR association helper.
 
-    How it works:
-      - Camera focal length (cam_fx) converts pixel offset → horizontal angle
-      - Each LiDAR point has (x=forward, y=left, z=up) in robot frame
-      - We compute each point's bearing angle and check if it falls inside
-        the angular span of the bbox
-      - Returns the 20th-percentile distance of matching points (robust)
-      - Returns None if LiDAR is disabled or no points found in that sector
-
-    This is the most accurate distance source — LiDAR is ±2cm at any range.
-    DA-V2 depth degrades beyond ~8m, so LiDAR fusion fixes far objects.
+    This approximation does NOT apply an explicit camera↔LiDAR extrinsic
+    transform. It is therefore disabled by default through
+    ROBOT["lidar_bbox_projection_validated"] and must not be used for formal
+    object-distance fusion until calibration/synchronization are validated.
     """
     if not state.get("use_lidar", True):
         return None
@@ -176,27 +276,98 @@ def _lidar_dist_for_bbox(bbox: list, img_w: int) -> float | None:
         return None
     return float(np.percentile(dists, 20))
 
+def _fresh_depth_map():
+    """
+    Return the latest metric depth map only while it satisfies
+    the active robot profile's freshness requirement.
 
-def _best_dist(bbox: list, img_w: int, depth_map) -> float:
+    A stale map must never be attached to a fresh object detection.
     """
-    Return the best available distance for a detection, in priority order:
-      1. LiDAR  — most accurate at ALL ranges (enabled via use_lidar flag)
-      2. DA-V2  — camera-only fallback (enabled via use_depth flag)
-      3. 99.0   — unknown
+    dm = state.get("depth_map")
+    ts = state.get("depth_ts")
+    source_ts = state.get("depth_source_image_ts")
+
+    if dm is None or ts is None or source_ts is None:
+        return None
+
+    max_age = float(
+        ROBOT.get(
+            "depth_max_age_s",
+            MAX_SENSOR_AGE_S,
+        )
+    )
+
+    age = max(time.monotonic() - float(ts), time.monotonic() - float(source_ts))
+
+    if age > max_age:
+        return None
+
+    return dm
+def _best_dist(
+    bbox: list,
+    img_w: int,
+    depth_map=None,
+) -> float:
     """
-    # Try LiDAR first — fixes far-object inaccuracy
-    if state.get("use_lidar", True):
-        d = _lidar_dist_for_bbox(bbox, img_w)
+    Return a detector-associated metric distance.
+
+    Object-level LiDAR projection remains disabled unless explicitly
+    validated. DA-V2 may be used only while its map is fresh.
+    """
+    if (
+        ROBOT.get(
+            "lidar_bbox_projection_validated",
+            False,
+        )
+        and state.get(
+            "use_lidar",
+            True,
+        )
+    ):
+        d = _lidar_dist_for_bbox(
+            bbox,
+            img_w,
+        )
+
         if d is not None:
-            return round(d, 2)
-
-    # Fallback: depth map
-    if state.get("use_depth", True) and depth_map is not None:
-        return round(_dist_from_bbox(depth_map, bbox), 2)
-
-    return 99.0
+            return round(
+                d,
+                2,
+            )
 
 
+    if not state.get(
+        "use_depth",
+        False,
+    ):
+        return 99.0
+
+
+    # Background detections must use the canonical freshness gate.
+    fresh_depth = (
+        _fresh_depth_map()
+    )
+
+    if fresh_depth is None:
+        return 99.0
+
+
+    try:
+        d = _dist_from_bbox(
+            fresh_depth,
+            bbox,
+        )
+
+        if not np.isfinite(d):
+            return 99.0
+
+        return round(
+            float(d),
+            2,
+        )
+
+    except Exception:
+        return 99.0
 # ════════════════════════════════════════════════════════════
 # MODEL LOADING
 # ════════════════════════════════════════════════════════════
@@ -227,18 +398,18 @@ def _load_models() -> None:
     global _depth_pipe, _gdino_model, _gdino_proc
     global _models_ready, _load_error, _device
 
-    log("Loading perception models (background)...", "PERC")
+    log("Loading perception models ...", "PERC")
     try:
         import torch
         _device = "cuda" if torch.cuda.is_available() else "cpu"
         log(f"Perception GPU: {_device} | GroundingDINO: CPU (saves VRAM for Isaac Sim)", "PERC")
 
         # ── DA-V2 → GPU ───────────────────────────────────────
-        log("Loading DA-V2 Metric Outdoor Small (GPU)...", "PERC")
+        log(f"Loading depth model: {ROBOT['depth_model']} ({ROBOT['display_name']}, GPU)...", "PERC")
         from transformers import pipeline as hf_pipeline
         _depth_pipe = hf_pipeline(
             task="depth-estimation",
-            model="depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf",
+            model=ROBOT["depth_model"],
             device=0 if _device == "cuda" else -1,
         )
         log("✅ DA-V2 ready", "PERC")
@@ -256,12 +427,16 @@ def _load_models() -> None:
         except Exception as e:
             log(f"⚠ GroundingDINO load failed: {e}", "PERC")
 
-        # ── YOLO26 → GPU ──────────────────────────────────────
+        # ── YOLO → GPU ──────────────────────────────────────
         _load_yolo_model(state.get("yolo_model", _DEFAULT_YOLO))
 
         _models_ready       = True
         state["perc_ready"] = True
-        log("✅ All perception models loaded — dual-loop active", "PERC")
+        log(
+            "✅ All perception models loaded "
+            "(YOLO active; DA-V2 and GroundingDINO runtime-controlled)",
+            "PERC",
+        )
 
     except ImportError as e:
         _load_error = str(e)
@@ -296,78 +471,230 @@ def _run_depth(img: PILImage.Image):
         return None
     try:
         result = _depth_pipe(img)
-        # predicted_depth: torch.Tensor, shape [H, W], values in metres
+        # Raw model output. Calibration is explicit in config.py rather than
+        # hidden as an unexplained multiplier.
         depth_tensor = result["predicted_depth"].squeeze()
-        depth_np = depth_tensor.cpu().numpy().astype(np.float32) * 10.0
-        # Sanity clamp: DA-V2 Metric Indoor trained for 0.1–20m range
-        depth_np = np.clip(depth_np, 0.1, 20.0)
+        raw = depth_tensor.detach().cpu().numpy().astype(np.float32)
+
+        # Align the raw metric output to the RGB image before bbox indexing.
+        if raw.shape != (img.height, img.width):
+            raw_img = PILImage.fromarray(raw, mode="F").resize(
+                (img.width, img.height), PILImage.Resampling.BICUBIC
+            )
+            raw = np.asarray(raw_img, dtype=np.float32)
+        raw[~np.isfinite(raw)] = np.nan
+        state["depth_raw_map"] = raw.copy()
+
+        depth_np = raw * float(ROBOT.get("depth_scale", 1.0)) + float(ROBOT.get("depth_bias", 0.0))
+        depth_np[~np.isfinite(depth_np)] = np.nan
         return depth_np
     except Exception as e:
         log(f"DA-V2 error: {e}", "PERC")
         return None
 
 
-# ════════════════════════════════════════════════════════════
-# FAST LOOP — YOLO26 + DA-V2  (~15 fps, GPU)
-# ════════════════════════════════════════════════════════════
-_YOLO_CONF    = 0.25   # lower = more detections
-_YOLO_FPS     = 15
 
-def _fast_loop() -> None:
-    """YOLO + depth at ~15fps. Updates _yolo_dets and state["depth_map"]."""
+def _cache_yolo_frame(image_seq, image: PILImage.Image) -> None:
+    """Keep a few exact RGB frames so bbox and on-demand depth stay synchronized."""
+    if image_seq is None or image is None:
+        return
+    with _yolo_frame_cache_lock:
+        _yolo_frame_cache[int(image_seq)] = image.copy()
+        for old_seq in sorted(_yolo_frame_cache)[:-_YOLO_FRAME_CACHE_SIZE]:
+            _yolo_frame_cache.pop(old_seq, None)
+
+
+def get_detection_image(det: dict):
+    """Return the exact frozen RGB frame that produced a YOLO detection."""
+    if det is None:
+        return None
+    seq = det.get("image_seq")
+    if seq is None:
+        return None
+    with _yolo_frame_cache_lock:
+        img = _yolo_frame_cache.get(int(seq))
+        return None if img is None else img.copy()
+
+
+def measure_detection_distance(det: dict):
+    """Run one synchronized DA-V2 measurement for a detector bbox.
+
+    This call is intended for a STOPPED robot. It gives depth priority, waits
+    for any in-flight YOLO CUDA call to finish, and runs DA-V2 on the exact RGB
+    frame that produced ``det``. The result is returned as a copied detection
+    with a metric ``dist``; it is NOT published as a continuously fresh safety
+    depth map.
+    """
+    if det is None or _depth_pipe is None:
+        return None
+
+    img = get_detection_image(det)
+    if img is None:
+        record_event(
+            "ON_DEMAND_DEPTH_FAILED",
+            reason="source_frame_not_cached",
+            image_seq=det.get("image_seq"),
+        )
+        return None
+
+    bbox = det.get("bbox")
+    if not bbox:
+        return None
+
+    seq = det.get("image_seq")
+    started = time.monotonic()
+    _depth_priority.set()
+    try:
+        with _gpu_inference_lock:
+            with timed("depth_estimation_on_demand", image_seq=seq):
+                depth_map = _run_depth(img)
+    finally:
+        _depth_priority.clear()
+
+    if depth_map is None:
+        record_event(
+            "ON_DEMAND_DEPTH_FAILED",
+            reason="depth_inference_failed",
+            image_seq=seq,
+        )
+        return None
+
+    stats = depth_stats_from_bbox(depth_map, bbox)
+    distance = float(stats.get("distance", 99.0))
+    if not np.isfinite(distance) or not (0.0 < distance < 90.0):
+        record_event(
+            "ON_DEMAND_DEPTH_FAILED",
+            reason="invalid_bbox_depth",
+            image_seq=seq,
+            valid_pixel_count=stats.get("valid_pixel_count", 0),
+        )
+        return None
+
+    result = dict(det)
+    result["dist"] = round(distance, 3)
+    result["depth_source_seq"] = seq
+    result["metric_source"] = "da_v2_on_demand"
+    result["depth_valid_pixel_count"] = stats.get("valid_pixel_count", 0)
+    result["depth_valid_pixel_ratio"] = stats.get("valid_pixel_ratio", 0.0)
+    result["depth_percentile"] = stats.get("percentile")
+    # Preserve provenance so navigation can reject out-of-regime target
+    # measurements instead of treating an uncalibrated far estimate as a
+    # trustworthy world-coordinate lock.
+    result["raw_distance_m"] = stats.get("raw_distance")
+    result["depth_calibrated"] = bool(stats.get("calibrated", False))
+    result["rough_raw_median_m"] = stats.get("rough_raw_median")
+
+    elapsed_ms = (time.monotonic() - started) * 1000.0
+    state["last_ondemand_depth_ms"] = elapsed_ms
+    state["last_ondemand_depth_seq"] = seq
+
+    record_event(
+        "ON_DEMAND_TARGET_DEPTH",
+        image_seq=seq,
+        distance_m=result["dist"],
+        raw_distance_m=stats.get("raw_distance"),
+        calibrated=stats.get("calibrated", False),
+        duration_ms=elapsed_ms,
+        valid_pixel_count=stats.get("valid_pixel_count", 0),
+    )
+    return result
+
+
+# ════════════════════════════════════════════════════════════
+# FAST LOOP — YOLO + DA-V2  (target rate; actual timing is logged)
+# ════════════════════════════════════════════════════════════
+_YOLO_CONF = PERCEPTION_CONFIG[
+    "yolo_conf"
+]
+
+_YOLO_FPS = float(
+    PERCEPTION_CONFIG[
+        "yolo_target_fps"
+    ]
+)
+
+_DEPTH_FPS = float(
+    PERCEPTION_CONFIG.get(
+        "depth_target_fps",
+        2.0,
+    )
+)
+
+
+def _yolo_loop() -> None:
+    """Best-effort YOLO loop with DA-V2 priority and serialized CUDA access."""
     global _yolo_dets
-    interval = 1.0 / _YOLO_FPS
+    interval = 1.0 / max(_YOLO_FPS, 0.1)
 
     while True:
+        loop_t0 = time.monotonic()
+
         if not _models_ready:
             time.sleep(0.5)
             continue
+        if not state.get("use_yolo", True):
+            time.sleep(interval)
+            continue
+        if _depth_priority.is_set():
+            time.sleep(0.05)
+            continue
 
-        img = state["image_raw"]
+        img = state.get("image_raw")
+        image_seq = state.get("image_seq")
+        image_ros_ts = state.get("image_ros_ts")
+        image_recv_ts = state.get("image_ts")
         if img is None:
             time.sleep(interval)
             continue
 
         try:
-            # ── LiDAR presence tracking ───────────────────────
-            if state["lidar"]:
-                state["has_lidar"] = True
-                state["_lidar_ts"] = time.time()
-            elif time.time() - state.get("_lidar_ts", 0) > 5.0:
-                state["has_lidar"] = False
-
-            # ── DA-V2 depth map (only if enabled) ────────────
-            if state.get("use_depth", True):
-                depth_map = _run_depth(img)
-                if depth_map is not None:
-                    state["depth_map"] = depth_map
-
-            # ── YOLO (only if enabled) ────────────────────────
-            if not state.get("use_yolo", True):
-                time.sleep(interval)
-                continue
-
             with _yolo_lock:
                 model = _yolo_model
             if model is None:
                 time.sleep(interval)
                 continue
 
-            W, H    = img.size
-            results = model(img, verbose=False, conf=_YOLO_CONF)[0]
-            dets    = []
+            W, _ = img.size
+
+            # Depth requests get priority. The second check closes the race
+            # between the first Event check and acquiring the CUDA lock.
+            with _gpu_inference_lock:
+                if _depth_priority.is_set():
+                    time.sleep(0.02)
+                    continue
+                with timed("yolo_detection", image_seq=image_seq):
+                    results = model(img, verbose=False, conf=_YOLO_CONF)[0]
+
+            # Cache exactly the frame whose bboxes we are about to publish.
+            _cache_yolo_frame(image_seq, img)
+
+            dets = []
             for box in results.boxes:
-                bbox  = [round(v) for v in box.xyxy[0].tolist()]
-                cx    = (bbox[0] + bbox[2]) // 2
+                bbox = [round(v) for v in box.xyxy[0].tolist()]
+                cx = (bbox[0] + bbox[2]) // 2
                 label = results.names[int(box.cls)]
-                # Use best available distance: LiDAR > depth > 99
+
+                # Continuous object detection does not require DA-V2. A fresh
+                # background depth map is used only where one legitimately
+                # exists (e.g. camera-only platform); Carter normally gets 99
+                # here and requests synchronized depth only while stopped.
+                distance = _best_dist(bbox, W)
+
                 dets.append({
-                    "label":  label,
-                    "dist":   _best_dist(bbox, W, state["depth_map"]),
+                    "label": label,
+                    "dist": distance,
                     "sector": _sector(cx, W),
-                    "bbox":   bbox,
-                    "conf":   round(float(box.conf), 3),
+                    "bbox": bbox,
+                    "conf": round(float(box.conf), 3),
                     "source": "yolo",
+                    "image_seq": image_seq,
+                    "image_ros_ts": image_ros_ts,
+                    "image_recv_ts": image_recv_ts,
+                    "depth_source_seq": (
+                        state.get("depth_source_image_seq")
+                        if distance < 90.0 else None
+                    ),
+                    "created_ts": time.monotonic(),
                 })
 
             with _dets_lock:
@@ -375,16 +702,156 @@ def _fast_loop() -> None:
             _update_state_detections()
 
         except Exception as e:
-            log(f"Fast loop error: {e}", "PERC")
+            log(f"YOLO loop error: {e}", "PERC")
 
-        time.sleep(interval)
+        elapsed = time.monotonic() - loop_t0
+        time.sleep(max(0.0, interval - elapsed))
 
 
+def _depth_loop() -> None:
+    """
+    Independent DA-V2 metric-depth loop.
+
+    Depth may run more slowly than YOLO without blocking object
+    detection. Safety and navigation explicitly reject stale maps.
+    """
+    interval = (
+        1.0
+        / max(
+            _DEPTH_FPS,
+            0.1,
+        )
+    )
+
+
+    while True:
+
+        loop_t0 = (
+            time.monotonic()
+        )
+
+
+        if not _models_ready:
+
+            time.sleep(
+                0.5
+            )
+
+            continue
+
+
+        if not state.get(
+            "use_depth",
+            False,
+        ):
+
+            state[
+                "depth_map"
+            ] = None
+
+            state[
+                "depth_ts"
+            ] = None
+            state["depth_source_image_ts"] = None
+
+            time.sleep(
+                0.25
+            )
+
+            continue
+
+
+        # Consistent snapshot: the image, receive time and sequence must belong
+        # to the SAME ROS callback, even while image callbacks are concurrent.
+        with state_lock:
+            img = state.get("image_raw")
+            image_seq = state.get("image_seq")
+            image_ros_ts = state.get("image_ros_ts")
+            image_recv_ts = state.get("image_ts")
+
+
+        if img is None:
+
+            time.sleep(
+                interval
+            )
+
+            continue
+
+
+        # Freeze this RGB frame for the depth computation.
+        depth_image = (
+            img.copy()
+        )
+
+
+        try:
+            with _gpu_inference_lock:
+                with timed("depth_estimation"):
+                    depth_map = _run_depth(depth_image)
+
+
+            if depth_map is not None:
+
+                completed_ts = (
+                    time.monotonic()
+                )
+
+                state[
+                    "depth_map"
+                ] = depth_map
+
+                state[
+                    "depth_ts"
+                ] = completed_ts
+
+                state[
+                    "depth_source_image"
+                ] = depth_image
+
+                state[
+                    "depth_source_image_seq"
+                ] = image_seq
+
+                state[
+                    "depth_source_ros_ts"
+                ] = image_ros_ts
+
+                state["depth_source_image_ts"] = image_recv_ts
+
+                state[
+                    "depth_inference_ms"
+                ] = (
+                    completed_ts
+                    - loop_t0
+                ) * 1000.0
+
+
+        except Exception as e:
+
+            log(
+                f"Depth loop error: {e}",
+                "PERC",
+            )
+
+
+        elapsed = (
+            time.monotonic()
+            - loop_t0
+        )
+
+        time.sleep(
+            max(
+                0.0,
+                interval
+                - elapsed,
+            )
+        )
 # ════════════════════════════════════════════════════════════
 # SLOW LOOP — GroundingDINO  (~1 fps, CPU)
 # ════════════════════════════════════════════════════════════
-_GDINO_FPS  = 1
-_GDINO_CONF = 0.30
+_GDINO_FPS = PERCEPTION_CONFIG["gdino_target_fps"]
+_GDINO_CONF = PERCEPTION_CONFIG["gdino_conf"]
 
 # Broad scene query — catches things YOLO misses (domain-specific objects)
 _SCENE_QUERY = (
@@ -394,7 +861,7 @@ _SCENE_QUERY = (
 )
 
 def _run_gdino_query(img: PILImage.Image, query: str, depth_map,
-                     threshold: float = _GDINO_CONF) -> list:
+                     threshold: float = _GDINO_CONF, frame_seq=None, image_ros_ts=None) -> list:
     if _gdino_model is None or _gdino_proc is None:
         return []
     try:
@@ -404,7 +871,8 @@ def _run_gdino_query(img: PILImage.Image, query: str, depth_map,
         inputs = _gdino_proc(images=img, text=text, return_tensors="pt")
         # CPU — no device transfer
         with torch.no_grad():
-            outputs = _gdino_model(**inputs)
+            with timed("gdino_detection"):
+                outputs = _gdino_model(**inputs)
         results = _gdino_proc.post_process_grounded_object_detection(
             outputs, inputs.input_ids,
             box_threshold=threshold, text_threshold=threshold,
@@ -423,6 +891,10 @@ def _run_gdino_query(img: PILImage.Image, query: str, depth_map,
                 "bbox":   bbox,
                 "conf":   round(float(score), 3),
                 "source": "gdino",
+                "image_seq": frame_seq if frame_seq is not None else state.get("image_seq"),
+                "image_ros_ts": image_ros_ts if image_ros_ts is not None else state.get("image_ros_ts"),
+                "depth_source_seq": state.get("depth_source_image_seq"),
+                "created_ts": time.monotonic(),
             })
         return dets
     except Exception as e:
@@ -441,20 +913,25 @@ def _slow_loop() -> None:
             continue
 
         # Skip if GDINO disabled
-        if not state.get("use_gdino", True):
+        if not state.get("use_gdino", False):
             time.sleep(1.0)
             continue
 
-        img       = state["image_raw"]
-        depth_map = state["depth_map"]
+        img = state.get("depth_source_image") or state.get("image_raw")
+        depth_map = state.get("depth_map")
         if img is None:
             time.sleep(interval)
             continue
 
         try:
-            dets = _run_gdino_query(img, _SCENE_QUERY, depth_map)
+            dets = _run_gdino_query(
+                img, _SCENE_QUERY, depth_map,
+                frame_seq=state.get("depth_source_image_seq"),
+                image_ros_ts=state.get("depth_source_ros_ts"),
+            )
             # Upgrade distances using LiDAR if available
-            if state.get("use_lidar", True) and state["lidar"]:
+            if (ROBOT.get("lidar_bbox_projection_validated", False)
+                    and state.get("use_lidar", True) and state["lidar"]):
                 W = img.size[0]
                 for d in dets:
                     ld = _lidar_dist_for_bbox(d["bbox"], W)
@@ -472,8 +949,8 @@ def _slow_loop() -> None:
 def _update_state_detections() -> None:
     """Merge active detection sources into state["detections"]."""
     with _dets_lock:
-        y = _yolo_dets[:] if state.get("use_yolo",  True) else []
-        g = _gdino_dets[:] if state.get("use_gdino", True) else []
+        y = _yolo_dets[:] if state.get("use_yolo", True) else []
+        g = _gdino_dets[:] if state.get("use_gdino", False) else []
     # GroundingDINO primary (richer labels), YOLO fills gaps
     state["detections"] = _merge_dets(g, y)
 
@@ -482,29 +959,146 @@ def _update_state_detections() -> None:
 # PUBLIC: targeted query (tool call)
 # ════════════════════════════════════════════════════════════
 def query_object(object_name: str, img: PILImage.Image) -> list:
-    """On-demand GroundingDINO search for a specific named object."""
-    cached = [d for d in state["detections"]
-              if object_name.lower() in d["label"].lower()]
+    """
+    Return matching detections from enabled perception sources.
+
+    GroundingDINO is already loaded at startup, but it is not executed
+    unless use_gdino is enabled from the dashboard.
+    """
+    now = time.monotonic()
+
+    cached = [
+        d for d in state["detections"]
+        if object_name.lower() in d["label"].lower()
+        and now - float(d.get("created_ts", now))
+        <= PERCEPTION_CONFIG["target_detection_max_age_s"]
+    ]
+
     if cached:
         return cached
-    return _run_gdino_query(img, object_name, state["depth_map"], threshold=0.25)
 
+    # DINO model may be loaded, but do not execute it while disabled.
+    if not state.get("use_gdino", False):
+        return []
+
+    depth = (
+        _fresh_depth_map()
+        if state.get(
+            "use_depth",
+            False,
+        )
+        else None
+    )
+
+    return _run_gdino_query(
+        img,
+        object_name,
+        depth,
+        threshold=PERCEPTION_CONFIG["gdino_query_conf"],
+        frame_seq=state.get("image_seq"),
+        image_ros_ts=state.get("image_ros_ts"),
+    )
+
+
+def run_grounding_dino(img: PILImage.Image, query: str) -> list:
+    """
+    Public targeted GroundingDINO query.
+
+    The model remains loaded in memory but is not executed while
+    GroundingDINO is disabled.
+    """
+    if not state.get("use_gdino", False):
+        return []
+
+    depth = (
+        _fresh_depth_map()
+        if state.get(
+            "use_depth",
+            False,
+        )
+        else None
+    )
+    return _run_gdino_query(
+        img,
+        query,
+        depth,
+        threshold=PERCEPTION_CONFIG["gdino_query_conf"],
+        frame_seq=state.get("image_seq"),
+        image_ros_ts=state.get("image_ros_ts"),
+    )
 
 # ════════════════════════════════════════════════════════════
 # STARTUP
 # ════════════════════════════════════════════════════════════
-def start_perception() -> None:
-    """Load models then start both inference loops in background threads."""
+def preload_perception_models() -> None:
+    """
+    Load all perception models synchronously.
+
+    This is intentionally done BEFORE the ROS node starts so expensive
+    Torch/CUDA/Transformers initialization cannot starve high-rate ROS
+    sensor callbacks.
+
+    Models are loaded into memory, but use_depth/use_gdino still control
+    whether inference is executed.
+    """
     state["yolo_model"] = _DEFAULT_YOLO
 
-    def _boot():
-        _load_models()
-        # Start both loops after models are ready
-        threading.Thread(target=_slow_loop, daemon=True).start()
-        _fast_loop()   # fast loop blocks this thread
+    log(
+        "Preloading perception models before ROS startup...",
+        "PERC",
+    )
 
-    threading.Thread(target=_boot, daemon=True).start()
-    log("Perception pipeline starting (background)...", "PERC")
+    _load_models()
+
+    if not _models_ready:
+        raise RuntimeError(
+            "Perception model preload failed: "
+            + str(_load_error)
+        )
+
+    log(
+        "✅ Perception models preloaded",
+        "PERC",
+    )
+def start_perception_loops() -> None:
+    """Start perception with platform-appropriate depth scheduling.
+
+    LiDAR-equipped robots keep DA-V2 on-demand so slow depth inference never
+    competes continuously with Isaac/YOLO. Camera-only robots retain the
+    continuous depth loop because depth is part of their safety sensing.
+    """
+    threading.Thread(
+        target=_yolo_loop,
+        daemon=True,
+        name="vrosa-yolo-perception",
+    ).start()
+
+    if not ROBOT.get("has_lidar", False):
+        threading.Thread(
+            target=_depth_loop,
+            daemon=True,
+            name="vrosa-depth-perception",
+        ).start()
+        depth_mode = "continuous (camera-only platform)"
+    else:
+        # Clear any inherited/stale map. Carter safety is LiDAR-first and
+        # navigation obtains target depth explicitly while stationary.
+        state["depth_map"] = None
+        state["depth_ts"] = None
+        state["depth_source_image_ts"] = None
+        depth_mode = "on-demand while stopped"
+
+    threading.Thread(
+        target=_slow_loop,
+        daemon=True,
+        name="vrosa-gdino-perception",
+    ).start()
+
+    log(
+        f"Perception loops started (YOLO continuous / DA-V2 {depth_mode} / "
+        "GroundingDINO runtime-controlled)",
+        "PERC",
+    )
 
 
 def perception_status() -> dict:

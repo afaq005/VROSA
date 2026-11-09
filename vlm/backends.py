@@ -80,7 +80,7 @@ class APIBackend(VLMBackend):
         from openai import OpenAI
         self._lock   = threading.Lock()
         self.model   = model
-        self.client  = OpenAI(api_key=api_key, base_url=base_url)
+        self.client  = OpenAI(api_key=api_key, base_url=base_url, timeout=30.0)
         self.base_url = base_url
         log(f"API backend ready: {model} @ {base_url}", "VLM")
 
