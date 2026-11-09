@@ -17,7 +17,7 @@
 
 ## Overview
 
-**VROSA** is a robot-agnostic, vision-language agent framework for natural language control of mobile robots. Built on ROS 2 and extending the [ROSA](https://github.com/nasa-jpl/rosa) tool-registry paradigm, VROSA couples an LLM planner with a constrained tool registry, a hot-swappable vision-language model (VLM) backend, and a camera-first perception pipeline — so a robot can be commanded in plain English without retraining or reprogramming.
+**VROSA** is a vision-language agent framework for natural language control of mobile robots. Built on ROS 2 and extending the [ROSA](https://github.com/nasa-jpl/rosa) tool-registry paradigm, VROSA couples an LLM planner with a constrained tool registry, a hot-swappable vision-language model (VLM) backend, and a camera-first perception pipeline — so a robot can be commanded in plain English without retraining or reprogramming.
 
 Every navigation decision runs through a **plan–execute–recheck loop**: the agent never issues raw velocity commands directly. It selects from a fixed set of tools (`navigate_to_object`, `move_forward`, `rotate_robot`, `describe_current_view`, `look_around`, etc.), and geometric sensors — not the VLM — handle distance estimation and safety stops. This keeps the system auditable, debuggable, and safe by construction.
 
@@ -52,7 +52,7 @@ Validated in **NVIDIA Isaac Sim** (Nova Carter, LiDAR-equipped) and on a **physi
 
 | Feature | Description |
 |---|---|
-| 🤖 **Robot-Agnostic** | ROS 2-compatible platforms — transfer requires only topic-constant changes |
+| 🤖 **Robot-** | ROS 2-compatible platforms — transfer requires only topic-constant changes |
 | 🔌 **Hot-Swappable VLM Backend** | Cloud API, local fine-tuned model, or remote GPU server — switch at runtime, no restart |
 | 🧠 **Constrained Tool Registry** | LLM never issues raw motor commands — only validated, auditable tools |
 | 📐 **LiDAR-Optional Distance Estimation** | Sensor-fused priority: LiDAR → depth-patch median → depth percentile fallback |
@@ -235,12 +235,7 @@ The agent decides when to invoke each tool based on the natural language command
 If you use VROSA in your research, please cite:
 
 ```bibtex
-@article{vrosa2026,
-  title   = {VROSA: Vision-Language Agentic Control for Autonomous Mobile Robots},
-  author  = {Ahmed, Afaq and Eesaar, Hassan and Lee, Deok Jin},
-  journal = {IEEE Transactions on Automation Science and Engineering},
-  year    = {2026}
-}
+
 ```
 
 ## License
