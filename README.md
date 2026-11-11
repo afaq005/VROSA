@@ -1,7 +1,8 @@
 VROSA: A Vision-Language Agentic Control Framework for Autonomous Mobile Robots
+![VROSA — Vision-Language Agentic Control for Autonomous Mobile Robots](assets/readme/vrosa-banner.png)
 Natural-Language Control of Mobile Robots Through Constrained Vision-Language Agents
-![ROS 2 Humble](https://img.shields.io/badge/ROS_2-Humble-22314E?logo=ros&logoColor=white) ![NVIDIA Isaac Sim](https://img.shields.io/badge/NVIDIA-Isaac_Sim-76B900?logo=nvidia&logoColor=white) ![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white) ![MIT License](https://img.shields.io/badge/License-MIT-A31F34)
-Anonymous peer-review artifact; no identifying website or paper link.
+![ROS 2 Humble](assets/readme/badge-ros2.png) ![NVIDIA Isaac Sim](assets/readme/badge-isaac.png) ![Python 3.10+](assets/readme/badge-python.png) ![MIT License](assets/readme/badge-license.png)
+Anonymous peer-review artifact. This repository accompanies a manuscript under double-anonymous review. An author-identifying paper, project website, or original-source URL is intentionally omitted.
 ---
 Overview
 VROSA is a ROS 2-based framework for natural-language control of mobile robots. Building on the ROSA tool-registry paradigm, it connects an LLM planner to a constrained set of perception and robot-motion tools, an interchangeable vision-language model (VLM) backend, and camera-first perception using YOLO, GroundingDINO, and Depth Anything V2.
