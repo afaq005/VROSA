@@ -1,10 +1,10 @@
 VROSA: A Vision-Language Agentic Control Framework for Autonomous Mobile Robots
 <div align="center">
 Natural-Language Control of Mobile Robots through Constrained Vision-Language Agents
-![ROS 2](https://img.shields.io/badge/ROS%202-Humble-blue?logo=ros)
-![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-Simulation-green?logo=nvidia)
-![Python](https://img.shields.io/badge/Python-3.10-yellow?logo=python)
-![License](https://img.shields.io/badge/License-MIT-red)
+[![ROS 2]](https://img.shields.io/badge/ROS%202-Humble-blue?logo=ros)
+[![Isaac Sim]](https://img.shields.io/badge/Isaac%20Sim-Simulation-green?logo=nvidia)
+[![Python]](https://img.shields.io/badge/Python-3.10-yellow?logo=python)
+[![License]](https://img.shields.io/badge/License-MIT-red)
 Anonymized research artifact accompanying a manuscript under double-anonymous review.
 </div>
 ---
