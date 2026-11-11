@@ -19,7 +19,7 @@
 
 **VROSA** is a vision-language agent framework for natural language control of mobile robots. Built on ROS 2 and extending the [ROSA](https://github.com/nasa-jpl/rosa) tool-registry paradigm, VROSA couples an LLM planner with a constrained tool registry, a hot-swappable vision-language model (VLM) backend, and a camera-first perception pipeline — so a robot can be commanded in plain English without retraining or reprogramming.
 
-Every navigation decision runs through a **plan–execute–recheck loop**: the agent never issues raw velocity commands directly. It selects from a fixed set of tools (`navigate_to_object`, `move_forward`, `rotate_robot`, `describe_current_view`, `look_around`, etc.), and geometric sensors — not the VLM — handle distance estimation and safety stops. This keeps the system auditable, debuggable, and safe by construction.
+Every navigation decision runs through a plan–move–recheck loop: the agent selects from a constrained set of predefined tools (navigate_to_object, move_forward, rotate_robot, describe_current_view, look_around, etc.) rather than generating raw motor commands. Distance estimation uses camera-based depth and optional LiDAR measurements, while a separate sensor-monitored controller supervises motion. This separation improves modularity, traceability, and safety monitoring, but does not guarantee collision-free navigation.
 
 ```
 Natural Language Command
@@ -46,18 +46,18 @@ Natural Language Command
  ROS 2 Motion Primitives (/cmd_vel)
 ```
 
-Validated in **NVIDIA Isaac Sim** (Nova Carter, LiDAR-equipped) and on a **physical AgileX Scout 2.0** (camera-only, Jetson AGX Orin 64GB), demonstrating cross-platform transfer with no change to agent, tool, perception, or motion code — only ROS 2 topic constants.
+Evaluated in NVIDIA Isaac Sim (Nova Carter, LiDAR-equipped) and on a physical AgileX Scout 2.0 (camera-only, Jetson AGX Orin 64 GB), demonstrating reuse of the agent and tool interfaces across the two configurations. Deployment required platform-specific sensor integration, motion configuration, calibration, and safety validation. Generalized plug-and-play robot portability has not yet been established.
 
 ## Key Features
 
 | Feature | Description |
 |---|---|
-| 🤖 **Robot-** | ROS 2-compatible platforms — transfer requires only topic-constant changes |
+| 🤖 **Reusable ROS 2 Interfaces** | Agent and tool interfaces reused across the evaluated Nova Carter and Scout 2.0 configurations, with platform-specific integration and validation |
 | 🔌 **Hot-Swappable VLM Backend** | Cloud API, local fine-tuned model, or remote GPU server — switch at runtime, no restart |
 | 🧠 **Constrained Tool Registry** | LLM never issues raw motor commands — only validated, auditable tools |
-| 📐 **LiDAR-Optional Distance Estimation** | Sensor-fused priority: LiDAR → depth-patch median → depth percentile fallback |
-| 🎯 **Sector-Filtered Disambiguation** | Correctly grounds "the bench" or "the green e-bike" among multiple same-class objects |
-| 🛡️ **Graduated Safety Layer** | Slowdown zone + hard stop, independent of which sensing channel is active |
+| 📐 **LiDAR-Optional Distance Estimation** | Camera-based metric depth with validity checks and adaptive percentiles; optional LiDAR for forward obstacle monitoring |
+| 🎯 **Semantic Target Disambiguation** | VLM-assisted identification of target objects using visual context and semantic attributes, with target rechecking during navigation |
+| 🛡️ **Sensor-Monitored Safety Layer** | Configurable speed limits, obstacle-triggered stopping, and emergency-stop handling under tested sensing and controller conditions |
 | 🖥️ **Live Dashboard** | Flask + MJPEG stream, telemetry, perception-source toggles, natural language input |
 
 ## System Architecture
@@ -69,7 +69,7 @@ VROSA is organized as four layers:
 3. **Perception and VLM layer** — YOLO + GroundingDINO detection, Depth Anything V2 metric depth, optional LiDAR fusion, hot-swappable VLM backend manager
 4. **ROS 2 execution layer** — sensor integration, actuator control, and the graduated-speed safety layer
 
-Robot-specific details are isolated in the ROS 2 layer; model-specific details are isolated in the VLM backend manager — new perception modules or robot platforms can be added without redesigning the control pipeline.
+Robot-specific interfaces are separated from the language-agent and tool layers, while model-specific configurations are managed through the VLM backend manager. This modular organization supports adaptation to different ROS 2 platforms, although new deployments require sensor integration, actuation configuration, calibration, and safety validation.
 
 ## Installation
 
@@ -84,7 +84,10 @@ Robot-specific details are isolated in the ROS 2 layer; model-specific details a
 ### Setup
 
 ```bash
-git clone https://github.com/afaq005/VROSA.git
+# Download the repository ZIP from:
+# https://anonymous.4open.science/r/VROSA-C7BF/
+
+# Extract the archive and enter its root directory.
 cd VROSA
 
 # Create environment
@@ -121,7 +124,7 @@ python3 vrosa_live.py
 
 ## Running on Physical Hardware (AgileX Scout 2.0)
 
-Hardware trials run in **camera-only mode** (no LiDAR) on a Jetson AGX Orin 64GB, with all perception and agent computation running onboard. Bring-up requires four terminals.
+Hardware trials use a LiDAR-free configuration on an AgileX Scout 2.0 equipped with a Jetson AGX Orin 64 GB and an Intel RealSense camera. ROS 2 control, local perception, and motion-safety monitoring execute onboard, while the selected cloud language-model backend uses external API inference. Bring-up requires separate terminals for the robot interface, camera, and VROSA application.
 
 ```bash
 # 0. Set SWB to TOP on the RC remote FIRST (before anything else)
@@ -142,7 +145,7 @@ export ROS_DOMAIN_ID=0 && export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ros2 launch realsense2_camera rs_launch.py
 
 # 4. Terminal 4 — VROSA
-cd ~/afaq/vrosa_hardware_testing
+cd /path/to/vrosa_hardware_testing
 source ~/vrosa-env/bin/activate
 source /opt/ros/humble/setup.bash && source ~/ros2_ws/install/setup.bash
 export ROS_DOMAIN_ID=0 && export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
@@ -155,7 +158,7 @@ Before running, install dependencies from `requirements.txt` and configure your 
 
 ### Porting to a New ROS 2 Robot
 
-Transfer to a new platform (as demonstrated between the simulated Nova Carter and the physical Scout 2.0 in this work) requires only editing the topic name constants at the top of `ros_node.py` — no agent, tool, perception, or motion code changes:
+VROSA supports reuse of its language-agent and tool interfaces across ROS 2 robot configurations. The evaluated Nova Carter and Scout 2.0 deployments required platform-specific integration and safety verification. Adapting the system to another robot requires configuring ROS 2 topic mappings, sensor inputs, coordinate frames, actuation parameters, depth estimation, and motion-safety thresholds. The example below illustrates topic mappings rather than a complete robot-porting procedure.
 
 ```python
 # ros_node.py
@@ -167,7 +170,7 @@ TOPIC_CMDVEL    = "/cmd_vel"
 TOPIC_ODOM      = "/odom"
 ```
 
-Set `ROS_DOMAIN_ID` for the target robot's network in `config.py`, and adjust `SAFE_DIST` in `motion.py` if the new platform needs a different safety margin.
+Configure the appropriate ROS 2 domain, robot profile, sensor topics, and platform-specific motion parameters. Safety thresholds must be selected and validated for the robot's sensing coverage, stopping behavior, and operating environment. Changing a single distance threshold does not establish safe operation on a new platform.
 
 ## Robot Tools
 
@@ -230,13 +233,32 @@ The agent decides when to invoke each tool based on the natural language command
 | `/detections` | GET | Current detection list |
 | `/snapshot` | GET | Save camera frame |
 
+
+## Experimental Scope and Limitations
+
+VROSA was evaluated in NVIDIA Isaac Sim and on a physical
+AgileX Scout 2.0. The experiments include navigation
+comparisons, depth validation, controlled safety tests,
+and outdoor natural-language navigation.
+
+The reported results are specific to the evaluated
+configurations. The system does not establish universal
+collision-free operation, fully generalized robot
+portability, or guaranteed performance in unseen
+environments. Independent simulator-ground-truth depth
+validation is reported separately from deployed
+uncalibrated depth performance.
+
+
 ## Citation
 
-If you use VROSA in your research, please cite:
 
-```bibtex
+VROSA: A Vision-Language Agentic Control Framework for Autonomous Mobile Robots.
 
-```
+Manuscript under peer review.
+
+Full bibliographic information will be provided following
+publication.
 
 ## License
 
